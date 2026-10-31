@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Макеты поиска по документам</title>
+<!-- Только для просмотра макета. В продукте шрифт лежит локально (офлайн), CDN не используется. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* layout: макеты экранов в рамке «монитора» 1440 px, переключение по вкладкам сверху */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#DCE0E0;color:var(--ink-900);font-family:var(--font-sans);font-size:var(--fs-15);line-height:var(--lh-body);color-scheme:light}
+h1,h2,h3,h4{margin:0;line-height:var(--lh-tight);text-wrap:balance}
+p{margin:0}
+a{color:var(--accent-hover)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:none;box-shadow:var(--focus)}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--font-mono);font-size:.93em}
+.muted{color:var(--ink-500)}
+.small{font-size:var(--fs-13)}
+.row{display:flex;gap:var(--s-2);align-items:center}
+.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.stack{display:flex;flex-direction:column;gap:var(--s-3)}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- Панель переключения макетов (не часть продукта) ---------- */
+.mock-nav{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);padding:10px 24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.mock-nav b{font-size:var(--fs-14);white-space:nowrap}
+.mock-nav b span{color:var(--ink-500);font-weight:400}
+.mock-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.mock-tabs a{font-size:var(--fs-13);text-decoration:none;color:var(--ink-700);padding:5px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-1);white-space:nowrap}
+.mock-tabs a[aria-current="page"]{background:var(--ink-900);color:#fff;border-color:var(--ink-900)}
+.mock-tabs .sep{width:1px;background:var(--line);margin:0 4px}
+.stage{padding:24px;overflow-x:auto}
+.screen{display:none;width:1440px;margin:0 auto;background:var(--surface-1);border:1px solid #B9C0C0;box-shadow:0 8px 32px rgba(20,26,26,.12)}
+.screen.on{display:block}
+.screen-note{width:1440px;margin:0 auto 12px;font-size:var(--fs-14);color:var(--ink-700);max-width:100%}
+.screen-note b{color:var(--ink-900)}
+
+/* ---------- Шапка приложения ---------- */
+.hdr{height:var(--header-h);background:var(--brand-ink);color:#fff;display:flex;align-items:center;gap:var(--s-6);padding:0 var(--s-6);border-bottom:4px solid var(--brand-orange)}
+.logo-slot{width:40px;height:40px;border:1.5px dashed #7C8787;display:grid;place-items:center;font-size:10px;letter-spacing:.06em;color:#AEB6B6;flex:none}
+.brand{display:flex;align-items:center;gap:var(--s-3);font-weight:600;font-size:var(--fs-16);white-space:nowrap}
+.brand small{display:block;font-weight:400;font-size:var(--fs-12);color:#AEB6B6}
+.hnav{display:flex;height:100%;margin-left:var(--s-4)}
+.hnav a{display:flex;align-items:center;padding:0 var(--s-4);color:#D5DADA;text-decoration:none;font-weight:500;border-bottom:4px solid transparent;margin-bottom:-4px;white-space:nowrap}
+.hnav a:hover{color:#fff;background:#222a2a}
+.hnav a.on{color:#fff;border-bottom-color:#fff;background:#222a2a}
+.hnav a .cnt{margin-left:6px;background:var(--brand-orange);color:#fff;font-size:11px;font-weight:600;padding:0 6px;border-radius:9px;line-height:18px}
+.hright{margin-left:auto;display:flex;align-items:center;gap:var(--s-4)}
+.huser{text-align:right;line-height:1.2;font-size:var(--fs-14)}
+.huser small{display:block;color:#AEB6B6;font-size:var(--fs-12)}
+.avatar{width:34px;height:34px;border-radius:50%;background:#3A4444;display:grid;place-items:center;font-weight:600;font-size:13px}
+
+/* ---------- Кнопки ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s-2);height:var(--control-h);padding:0 var(--s-4);border-radius:var(--radius);border:1px solid transparent;font-weight:600;font-size:var(--fs-15);cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-press)}
+.btn-secondary{background:#fff;color:var(--ink-900);border-color:var(--line-strong)}
+.btn-secondary:hover{background:var(--surface-2);border-color:var(--ink-500)}
+.btn-dark{background:var(--ink-900);color:#fff}
+.btn-dark:hover{background:var(--ink-700)}
+.btn-ghost{background:transparent;color:var(--ink-700)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-danger{background:#fff;color:var(--danger);border-color:#E1A7A2}
+.btn-danger:hover{background:var(--danger-tint)}
+.btn[disabled]{background:var(--surface-2);color:var(--ink-400);border-color:var(--line);cursor:not-allowed}
+.btn-sm{height:var(--control-h-sm);padding:0 var(--s-3);font-size:var(--fs-14)}
+.btn-lg{height:48px;padding:0 var(--s-6);font-size:var(--fs-16)}
+.btn-on-dark{background:transparent;color:#fff;border-color:#5B6666}
+.btn-on-dark:hover{background:#222a2a}
+.icon-btn{width:var(--control-h-sm);height:var(--control-h-sm);display:inline-grid;place-items:center;border:1px solid transparent;background:transparent;border-radius:var(--radius);color:var(--ink-500);cursor:pointer}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink-900)}
+
+/* ---------- Поля ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.label{font-size:var(--fs-14);font-weight:600;color:var(--ink-700)}
+.hint{font-size:var(--fs-13);color:var(--ink-500)}
+.input,.select{height:var(--control-h);border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;padding:0 var(--s-3);width:100%}
+.input::placeholder,textarea::placeholder{color:var(--ink-400)}
+.input:hover,.select:hover{border-color:var(--ink-500)}
+.input:focus,.select:focus,textarea:focus{border-color:var(--accent);box-shadow:var(--focus);outline:none}
+.input.err{border-color:var(--danger);background:#FFFBFA}
+.err-text{font-size:var(--fs-13);color:var(--danger);display:flex;gap:6px;align-items:center}
+.select{appearance:none;padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%232C3434' stroke-width='1.8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.check{display:inline-flex;gap:var(--s-2);align-items:center;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.input-search{position:relative}
+.input-search svg{position:absolute;left:12px;top:11px;color:var(--ink-500)}
+.input-search .input{padding-left:38px}
+
+/* ---------- Бейджи статусов ---------- */
+.badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--radius);font-size:var(--fs-13);font-weight:600;white-space:nowrap;border:1px solid transparent}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.badge.plain::before{display:none}
+.b-ok{background:var(--ok-tint);color:var(--ok)}
+.b-warn{background:var(--warn-tint);color:var(--warn)}
+.b-danger{background:var(--danger-tint);color:var(--danger)}
+.b-info{background:var(--info-tint);color:var(--info)}
+.b-neutral{background:var(--neutral-tint);color:var(--ink-700)}
+.b-accent{background:var(--accent-tint);color:var(--accent-hover)}
+.b-outline{background:#fff;color:var(--ink-700);border-color:var(--line-strong)}
+.b-run::before{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.b-run::before,.skel,.typing i{animation:none!important}}
+
+/* ---------- Уведомления ---------- */
+.alert{display:flex;gap:var(--s-3);padding:var(--s-3) var(--s-4);border:1px solid;border-left-width:4px;border-radius:var(--radius);font-size:var(--fs-14);align-items:flex-start}
+.alert b{display:block;font-size:var(--fs-15)}
+.alert svg{margin-top:2px}
+.a-warn{background:var(--warn-tint);border-color:var(--warn-line);color:#5C4100}
+.a-danger{background:var(--danger-tint);border-color:#E7A39D;color:#7A1A14}
+.a-info{background:var(--info-tint);border-color:#A9C2DA;color:#1E3F5F}
+.a-ok{background:var(--ok-tint);border-color:#9CCDB1;color:#134A2D}
+
+/* ---------- Карточки, таблицы ---------- */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius)}
+.card-h{padding:var(--s-4) var(--s-5);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:var(--s-3)}
+.card-h h3{font-size:var(--fs-16)}
+.card-b{padding:var(--s-5)}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--fs-14)}
+.tbl th{background:var(--surface-2);text-align:left;font-weight:600;color:var(--ink-700);padding:10px 12px;border-bottom:1px solid var(--line-strong);white-space:nowrap;font-size:var(--fs-13)}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl tr:hover td{background:#FAFBFB}
+.tbl tr.sel td{background:var(--accent-tint)}
+.tbl .r{text-align:right}
+.tbl td.doc a{font-weight:600;text-decoration:none;color:var(--ink-900)}
+.tbl td.doc a:hover{color:var(--accent-hover);text-decoration:underline}
+.pager{display:flex;align-items:center;gap:var(--s-2);padding:var(--s-3) var(--s-4);font-size:var(--fs-14);color:var(--ink-500)}
+.pager .pg{min-width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);background:#fff;border-radius:var(--radius);color:var(--ink-700)}
+.pager .pg.on{background:var(--ink-900);color:#fff;border-color:var(--ink-900)}
+.tabs{display:flex;border-bottom:1px solid var(--line);gap:var(--s-1)}
+.tabs a{padding:10px var(--s-4);text-decoration:none;color:var(--ink-500);font-weight:600;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs a.on{color:var(--ink-900);border-bottom-color:var(--accent)}
+.tabs a .cnt{font-weight:500;color:var(--ink-500);margin-left:4px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:8px 16px;font-size:var(--fs-14)}
+.kv dt{color:var(--ink-500)}
+.kv dd{margin:0}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;font-size:var(--fs-14);white-space:nowrap;cursor:pointer}
+.chip b{font-weight:600}
+.chip.on{border-color:var(--ink-900);background:var(--ink-900);color:#fff}
+.cite{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;font-size:12px;font-weight:700;background:var(--accent-tint);color:var(--accent-hover);border:1px solid var(--accent-tint-strong);border-radius:var(--radius);text-decoration:none;vertical-align:2px;margin:0 1px;cursor:pointer}
+.cite:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+mark{background:var(--accent-tint-strong);color:inherit;padding:0 2px;box-shadow:inset 0 -2px 0 var(--brand-orange)}
+.progress{height:8px;background:var(--surface-2);border-radius:1px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--brand-orange)}
+.progress.ok i{background:var(--ok)}
+.progress.warn i{background:#C99A1E}
+
+/* ---------- Общие раскладки экранов ---------- */
+.page{padding:var(--s-6)}
+.page-h{display:flex;align-items:flex-end;gap:var(--s-4);margin-bottom:var(--s-5)}
+.page-h h1{font-size:var(--fs-24)}
+.page-h p{color:var(--ink-500);font-size:var(--fs-14);margin-top:4px}
+.crumbs{font-size:var(--fs-13);color:var(--ink-500);margin-bottom:6px}
+.crumbs a{color:var(--ink-500)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-4)}
+.tile{background:#fff;border:1px solid var(--line);padding:var(--s-4) var(--s-5);border-top:3px solid var(--ink-900)}
+.tile .n{font-size:var(--fs-30);font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;margin-top:4px}
+.tile .l{font-size:var(--fs-13);color:var(--ink-500);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tile .d{font-size:var(--fs-13);color:var(--ink-500);margin-top:4px}
+.tile.t-ok{border-top-color:var(--ok)}
+.tile.t-danger{border-top-color:var(--danger)}
+.tile.t-accent{border-top-color:var(--brand-orange)}
+
+/* admin */
+.admin{display:grid;grid-template-columns:248px 1fr;min-height:860px}
+.anav{background:#fff;border-right:1px solid var(--line);padding:var(--s-4) 0}
+.anav h4{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-500);padding:var(--s-4) var(--s-5) var(--s-2)}
+.anav a{display:flex;align-items:center;gap:var(--s-3);padding:9px var(--s-5);text-decoration:none;color:var(--ink-700);font-weight:500;font-size:var(--fs-15);border-left:3px solid transparent}
+.anav a:hover{background:var(--surface-1)}
+.anav a.on{background:var(--surface-2);color:var(--ink-900);border-left-color:var(--accent);font-weight:600}
+.anav a .badge{margin-left:auto;height:20px;font-size:12px}
+
+/* ---------- Дизайн-система ---------- */
+.ds{padding:var(--s-8) var(--s-10);display:grid;gap:var(--s-8)}
+.ds section{display:grid;grid-template-columns:220px 1fr;gap:var(--s-6);padding-top:var(--s-6);border-top:1px solid var(--line)}
+.ds section>h2{font-size:var(--fs-18)}
+.ds section>h2 small{display:block;font-size:var(--fs-13);font-weight:400;color:var(--ink-500);margin-top:6px;line-height:1.45}
+.sw-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--s-3)}
+.sw{border:1px solid var(--line);background:#fff}
+.sw i{display:block;height:64px}
+.sw div{padding:8px 10px;font-size:var(--fs-12);line-height:1.4}
+.sw b{display:block;font-size:var(--fs-13)}
+.type-row{display:grid;grid-template-columns:150px 1fr;align-items:baseline;gap:var(--s-4);padding:10px 0;border-bottom:1px dashed var(--line)}
+.type-row span{font-size:var(--fs-12);color:var(--ink-500);font-family:var(--font-mono)}
+.demo{display:flex;flex-wrap:wrap;gap:var(--s-3);align-items:center}
+
+/* ---------- Вход ---------- */
+.login{display:grid;grid-template-columns:1fr 1fr;min-height:860px}
+.login-brand{background:var(--brand-ink);color:#fff;padding:56px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.login-brand::after{content:"";position:absolute;left:0;right:0;bottom:0;height:12px;background:var(--brand-orange)}
+.login-brand .logo-slot{width:72px;height:72px;font-size:12px}
+.login-brand h1{font-size:40px;font-weight:600;margin-top:auto;max-width:520px;line-height:1.15}
+.login-brand p{color:#B8C0C0;font-size:var(--fs-18);margin-top:var(--s-4);max-width:480px}
+.login-brand ul{margin:40px 0 72px;padding:0;list-style:none;display:grid;gap:12px;color:#D5DADA}
+.login-brand li{display:flex;gap:12px;align-items:center}
+.login-brand li::before{content:"";width:16px;height:3px;background:var(--brand-orange)}
+.login-form{display:grid;place-items:center;background:#fff}
+.login-form form{width:400px;display:grid;gap:var(--s-5)}
+.login-form h2{font-size:var(--fs-30)}
+.divider{display:flex;align-items:center;gap:var(--s-3);color:var(--ink-500);font-size:var(--fs-13)}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ---------- Чат ---------- */
+.chat{display:grid;grid-template-columns:272px 1fr 420px;height:880px}
+.chat-side{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.chat-side .top{padding:var(--s-4);display:grid;gap:var(--s-3);border-bottom:1px solid var(--line)}
+.hist{overflow:auto;padding:var(--s-2) 0;flex:1}
+.hist h5{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-500);padding:var(--s-3) var(--s-4) var(--s-1)}
+.hist a{display:block;padding:8px var(--s-4);text-decoration:none;color:var(--ink-700);font-size:var(--fs-14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
+.hist a:hover{background:var(--surface-1)}
+.hist a.on{background:var(--surface-2);border-left-color:var(--accent);color:var(--ink-900);font-weight:600}
+.chat-side .foot{padding:var(--s-3) var(--s-4);font-size:var(--fs-12);color:var(--ink-500);border-top:1px solid var(--line)}
+.chat-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.chat-filters{display:flex;gap:var(--s-2);padding:var(--s-3) var(--s-6);border-bottom:1px solid var(--line);background:#fff;flex-wrap:wrap;align-items:center}
+.msgs{flex:1;overflow:auto;padding:var(--s-6);display:flex;flex-direction:column;gap:var(--s-6)}
+.q{align-self:flex-end;max-width:640px;background:var(--ink-900);color:#fff;padding:var(--s-3) var(--s-4);border-radius:var(--radius);font-size:var(--fs-16)}
+.q small{display:block;color:#AEB6B6;font-size:var(--fs-12);margin-bottom:2px}
+.a{max-width:760px;display:grid;gap:var(--s-3)}
+.a-h{display:flex;align-items:center;gap:var(--s-2);font-size:var(--fs-13);color:var(--ink-500);font-weight:600}
+.a-mark{width:22px;height:22px;background:var(--brand-orange);display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;border-radius:var(--radius)}
+.a-body{background:#fff;border:1px solid var(--line);padding:var(--s-4) var(--s-5);font-size:var(--fs-16);line-height:1.6;display:grid;gap:var(--s-3)}
+.a-body ol{margin:0;padding-left:22px;display:grid;gap:6px}
+.a-foot{display:flex;gap:var(--s-2);align-items:center;font-size:var(--fs-13);color:var(--ink-500)}
+.steps{display:flex;gap:var(--s-4);font-size:var(--fs-13);color:var(--ink-500);align-items:center;flex-wrap:wrap}
+.steps span{display:flex;gap:6px;align-items:center}
+.steps .done{color:var(--ok)}
+.steps .cur{color:var(--ink-900);font-weight:600}
+.typing{display:inline-flex;gap:4px;vertical-align:middle}
+.typing i{width:6px;height:6px;background:var(--brand-orange);border-radius:50%;animation:pulse 1s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+.composer{padding:var(--s-4) var(--s-6) var(--s-5);background:var(--surface-1);border-top:1px solid var(--line)}
+.composer-box{display:flex;gap:var(--s-3);align-items:flex-end;background:#fff;border:1px solid var(--line-strong);padding:var(--s-3);border-radius:var(--radius)}
+.composer-box textarea{flex:1;border:0;resize:none;min-height:48px;font-size:var(--fs-16);outline:none;padding:4px}
+.sources{background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.sources-h{padding:var(--s-4) var(--s-5);border-bottom:1px solid var(--line)}
+.sources-h h3{font-size:var(--fs-16)}
+.src-list{overflow:auto;padding:var(--s-3);display:grid;gap:var(--s-3);align-content:start}
+.src{border:1px solid var(--line);padding:var(--s-3) var(--s-4);display:grid;gap:6px;cursor:pointer;background:#fff}
+.src:hover{border-color:var(--ink-500)}
+.src.on{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.src-t{display:flex;gap:var(--s-2);align-items:flex-start;font-weight:600;font-size:var(--fs-14);line-height:1.35}
+.src-meta{font-size:var(--fs-12);color:var(--ink-500);display:flex;gap:var(--s-2);align-items:center;flex-wrap:wrap}
+.src-q{font-size:var(--fs-13);color:var(--ink-700);border-left:2px solid var(--line);padding-left:var(--s-2)}
+
+/* ---------- Документ ---------- */
+.docv{display:grid;grid-template-columns:260px 1fr 340px;height:880px}
+.doc-toolbar{display:flex;gap:var(--s-3);align-items:center;padding:var(--s-3) var(--s-6);background:#fff;border-bottom:1px solid var(--line)}
+.toc{background:#fff;border-right:1px solid var(--line);padding:var(--s-4) 0;overflow:auto}
+.toc a{display:block;padding:6px var(--s-5);font-size:var(--fs-14);color:var(--ink-700);text-decoration:none;border-left:3px solid transparent}
+.toc a.sub{padding-left:36px;font-size:var(--fs-13)}
+.toc a.on{border-left-color:var(--accent);background:var(--accent-tint);color:var(--ink-900);font-weight:600}
+.sheet-wrap{overflow:auto;padding:var(--s-6);background:#D5DADA}
+.sheet{background:#fff;width:640px;margin:0 auto;padding:56px 64px;box-shadow:0 1px 3px rgba(0,0,0,.2);font-size:14.5px;line-height:1.6;font-family:"Times New Roman",Georgia,serif;display:grid;gap:12px}
+.sheet h2{text-align:center;font-size:16px;font-weight:700;font-family:inherit}
+.sheet .pno{font-family:var(--font-sans);font-size:11px;color:var(--ink-500);text-align:center;margin-top:12px}
+.sheet .hl{background:var(--accent-tint);outline:2px solid var(--brand-orange);outline-offset:4px;position:relative}
+.sheet .hl::before{content:"Найдено";position:absolute;left:-78px;top:0;font-family:var(--font-sans);font-size:10px;font-weight:700;background:var(--brand-orange);color:#fff;padding:2px 5px;letter-spacing:.04em;text-transform:uppercase}
+.sheet table{border-collapse:collapse;width:100%;font-size:13px}
+.sheet td,.sheet th{border:1px solid #444;padding:4px 6px}
+.meta-side{background:#fff;border-left:1px solid var(--line);padding:var(--s-5);overflow:auto;display:grid;gap:var(--s-5);align-content:start}
+.meta-side h4{font-size:var(--fs-13);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-500)}
+.rel{display:grid;gap:var(--s-2)}
+.rel a{display:grid;grid-template-columns:auto 1fr;gap:var(--s-2);padding:var(--s-2) var(--s-3);border:1px solid var(--line);text-decoration:none;color:var(--ink-900);font-size:var(--fs-14);align-items:start}
+.rel a:hover{border-color:var(--ink-500)}
+.rel em{font-style:normal;font-size:var(--fs-12);font-weight:600;color:var(--ink-500);text-transform:uppercase;letter-spacing:.04em;grid-column:1/-1}
+
+/* ---------- Противоречия ---------- */
+.cpair{background:#fff;border:1px solid var(--line);border-left:4px solid var(--danger)}
+.cpair.mid{border-left-color:#C99A1E}
+.cpair-h{display:flex;gap:var(--s-3);align-items:center;padding:var(--s-3) var(--s-5);border-bottom:1px solid var(--line)}
+.cpair-b{display:grid;grid-template-columns:1fr 1fr}
+.cpair-b>div{padding:var(--s-4) var(--s-5);display:grid;gap:var(--s-2);align-content:start}
+.cpair-b>div+div{border-left:1px solid var(--line)}
+.cpair-b blockquote{margin:0;font-size:var(--fs-15);border-left:3px solid var(--line-strong);padding-left:var(--s-3)}
+.cpair-why{padding:var(--s-3) var(--s-5);background:var(--surface-1);border-top:1px solid var(--line);font-size:var(--fs-14);display:flex;gap:var(--s-3);align-items:flex-start}
+.cpair-f{display:flex;gap:var(--s-2);padding:var(--s-3) var(--s-5);border-top:1px solid var(--line);align-items:center}
+
+/* ---------- Права ---------- */
+.matrix th,.matrix td{text-align:center}
+.matrix th:first-child,.matrix td:first-child{text-align:left}
+.matrix .grp td{background:var(--surface-1);font-weight:700;font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-500)}
+.matrix input{width:18px;height:18px;accent-color:var(--accent)}
+.matrix .code{font-family:var(--font-mono);font-size:12px;color:var(--ink-500);display:block}
+
+/* ---------- Состояния ---------- */
+.states{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s-5);padding:var(--s-6)}
+.state{background:#fff;border:1px solid var(--line);min-height:300px;display:flex;flex-direction:column}
+.state-cap{font-size:var(--fs-12);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-500);padding:var(--s-3) var(--s-4);border-bottom:1px solid var(--line)}
+.state-b{flex:1;display:grid;place-items:center;padding:var(--s-6);text-align:center}
+.state-b .ico{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto var(--s-4)}
+.state-b h3{font-size:var(--fs-18);margin-bottom:var(--s-2)}
+.state-b p{color:var(--ink-500);font-size:var(--fs-14);max-width:320px;margin:0 auto}
+.skel{background:linear-gradient(90deg,var(--surface-2) 25%,#F7F8F8 50%,var(--surface-2) 75%);background-size:200% 100%;animation:sh 1.4s infinite;height:14px;border-radius:1px}
+@keyframes sh{to{background-position:-200% 0}}
+.gauge{display:grid;gap:6px}
+.gauge .progress{height:14px}
+.svc{display:flex;gap:var(--s-3);align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:var(--fs-14)}
+.svc:last-child{border-bottom:0}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}
+.dot.w{background:#C99A1E}.dot.d{background:var(--danger)}
+.chunk{border:1px solid var(--line);background:#fff}
+.chunk-h{display:flex;gap:var(--s-3);align-items:center;padding:8px var(--s-4);background:var(--surface-1);border-bottom:1px solid var(--line);font-size:var(--fs-13);color:var(--ink-500)}
+.chunk-h b{color:var(--ink-900)}
+.chunk-b{padding:var(--s-3) var(--s-4);font-size:var(--fs-14);font-family:var(--font-mono);white-space:pre-wrap;line-height:1.55}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.5L20 16M20 20v-4h-4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/><path d="M3 3l18 18"/></symbol>
+  <symbol id="i-empty" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8.5 11h5"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M4 8h4a2 2 0 1 1 4 0h4v4a2 2 0 1 1 0 4v4H4z"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><path d="M12 3v18M5 8l-3 4 3 4M19 8l3 4-3 4"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+</svg>
+
+<nav class="mock-nav" aria-label="Макеты">
+  <b>Макеты экранов <span>· этап 0, на согласование</span></b>
+  <div class="mock-tabs">
+    <a href="#ds">Дизайн-система</a>
+    <span class="sep"></span>
+    <a href="#login">Вход</a>
+    <a href="#chat">Поиск и чат</a>
+    <a href="#doc">Просмотр документа</a>
+    <a href="#docs">Документы</a>
+    <a href="#contra">Противоречия</a>
+    <span class="sep"></span>
+    <a href="#a-users">Админ: пользователи</a>
+    <a href="#a-roles">Роли и права</a>
+    <a href="#a-sources">Источники</a>
+    <a href="#a-doc">Карточка документа</a>
+    <a href="#a-audit">Аудит</a>
+    <a href="#a-health">Состояние</a>
+    <span class="sep"></span>
+    <a href="#states">Состояния</a>
+  </div>
+</nav>
+
+<div class="stage">
+
+<!-- ================= ДИЗАЙН-СИСТЕМА ================= -->
+<p class="screen-note" data-for="ds"><b>Дизайн-система.</b> Все экраны собраны только из этих элементов. Те же значения лежат в <span class="mono">design/tokens.css</span> и подключаются во фронтенде.</p>
+<div class="screen" id="ds">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div><div>Поиск по документам<small>Место под логотип ждёт утверждения</small></div></div>
+  </header>
+  <div class="ds">
+    <section>
+      <h2>Цвета<small>Оранжевый — только для главных действий, активного состояния и найденного места. Ошибки и предупреждения — свои цвета, чтобы не путались с кнопкой.</small></h2>
+      <div class="stack">
+        <div class="sw-grid">
+          <div class="sw"><i style="background:var(--brand-orange)"></i><div><b>Фирменный оранжевый</b><span class="mono">#C8603A</span><br>полосы, плашки, отметки</div></div>
+          <div class="sw"><i style="background:var(--accent)"></i><div><b>Акцент · кнопка</b><span class="mono">#B9542F</span><br>белый текст 4,8:1</div></div>
+          <div class="sw"><i style="background:var(--accent-hover)"></i><div><b>Акцент · наведение, ссылки</b><span class="mono">#A84B28</span><br>на белом 5,7:1</div></div>
+          <div class="sw"><i style="background:var(--accent-tint)"></i><div><b>Акцент · фон</b><span class="mono">#FBEDE6</span><br>выделение, найденное</div></div>
+          <div class="sw"><i style="background:var(--brand-ink)"></i><div><b>Фирменный чёрный</b><span class="mono">#141A1A</span><br>шапка, текст</div></div>
+          <div class="sw"><i style="background:#fff"></i><div><b>Белый</b><span class="mono">#FFFFFF</span><br>карточки, документ</div></div>
+        </div>
+        <div class="sw-grid">
+          <div class="sw"><i style="background:var(--ink-700)"></i><div><b>Графит 700</b><span class="mono">#2C3434</span></div></div>
+          <div class="sw"><i style="background:var(--ink-500)"></i><div><b>Серый 500 · подписи</b><span class="mono">#5E6969</span></div></div>
+          <div class="sw"><i style="background:var(--line-strong)"></i><div><b>Рамка поля</b><span class="mono">#B9C0C0</span></div></div>
+          <div class="sw"><i style="background:var(--line)"></i><div><b>Разделитель</b><span class="mono">#D9DEDE</span></div></div>
+          <div class="sw"><i style="background:var(--surface-2)"></i><div><b>Фон панелей</b><span class="mono">#ECEFEF</span></div></div>
+          <div class="sw"><i style="background:var(--surface-1)"></i><div><b>Фон страницы</b><span class="mono">#F5F6F6</span></div></div>
+        </div>
+        <div class="sw-grid">
+          <div class="sw"><i style="background:var(--ok)"></i><div><b>Успех</b><span class="mono">#1E7044</span><br>действует, готово</div></div>
+          <div class="sw"><i style="background:#C99A1E"></i><div><b>Предупреждение</b><span class="mono">#8A6100</span> текст<br>источник недоступен</div></div>
+          <div class="sw"><i style="background:var(--danger)"></i><div><b>Ошибка</b><span class="mono">#B3261E</span><br>ошибка, противоречие</div></div>
+          <div class="sw"><i style="background:var(--info)"></i><div><b>Инфо</b><span class="mono">#2B5A86</span><br>в очереди, подсказки</div></div>
+          <div class="sw"><i style="background:var(--neutral-tint)"></i><div><b>Нейтральный</b><span class="mono">#E8ECEC</span><br>отменён, архив</div></div>
+          <div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Типографика<small>IBM Plex Sans: строгий технический гротеск с полной кириллицей. Базовый размер 15–16 px — читается на обычном офисном мониторе.</small></h2>
+      <div>
+        <div class="type-row"><span>30 / 600</span><div style="font-size:30px;font-weight:600">Состояние системы</div></div>
+        <div class="type-row"><span>24 / 600 · H1</span><div style="font-size:24px;font-weight:600">Источники и синхронизация</div></div>
+        <div class="type-row"><span>18 / 600 · H2</span><div style="font-size:18px;font-weight:600">Приказ № 112 от 14.03.2024</div></div>
+        <div class="type-row"><span>16 / 400 · ответ</span><div style="font-size:16px">Допуск к работам на высоте оформляется нарядом-допуском по форме приложения 2.</div></div>
+        <div class="type-row"><span>15 / 400 · текст</span><div>Основной текст интерфейса, таблицы с длинными названиями документов.</div></div>
+        <div class="type-row"><span>13 / 400 · подпись</span><div class="small muted">Изменён 12.09.2025 · Документооборот · 14 страниц</div></div>
+        <div class="type-row"><span>Mono 14 · коды</span><div class="mono">documents.upload_manual · 4f2a-91c0 · 10234</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Кнопки<small>Высота 40 px (компактные 32 px). Одна оранжевая кнопка на экран — главное действие.</small></h2>
+      <div class="stack">
+        <div class="demo">
+          <button class="btn btn-primary">Задать вопрос</button>
+          <button class="btn btn-secondary">Отмена</button>
+          <button class="btn btn-dark">Сохранить роль</button>
+          <button class="btn btn-ghost">Сбросить фильтры</button>
+          <button class="btn btn-danger">Заблокировать</button>
+          <button class="btn btn-primary" disabled>Недоступно</button>
+        </div>
+        <div class="demo">
+          <button class="btn btn-primary btn-lg">Войти</button>
+          <button class="btn btn-secondary btn-sm"><svg class="i"><use href="#i-refresh"/></svg>Повторить</button>
+          <button class="btn btn-secondary btn-sm"><svg class="i"><use href="#i-down"/></svg>Скачать PDF</button>
+          <button class="icon-btn" aria-label="Закрыть"><svg class="i"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Поля ввода<small>Подпись всегда над полем. Ошибка — красная рамка и текст, что исправить.</small></h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+        <div class="field"><label class="label" for="ds1">Табельный номер</label><input class="input" id="ds1" value="10234"><span class="hint">5–6 цифр, как в пропуске</span></div>
+        <div class="field"><label class="label" for="ds2">Пароль</label><input class="input err" id="ds2" type="password" value="xxxxxxx"><span class="err-text"><svg class="i" style="width:15px;height:15px"><use href="#i-warn"/></svg>Неверный табельный номер или пароль</span></div>
+        <div class="field"><label class="label" for="ds3">Источник</label><select class="select" id="ds3"><option>Все источники</option></select></div>
+        <div class="field"><label class="label" for="ds4">Поиск</label><div class="input-search"><svg class="i"><use href="#i-search"/></svg><input class="input" id="ds4" placeholder="Номер, название или текст"></div></div>
+        <div class="field"><span class="label">Флажки</span><div class="row" style="gap:20px;height:40px"><label class="check"><input type="checkbox" checked id="ds5"> Общий документ</label><label class="check"><input type="checkbox" id="ds6"> Исключён из поиска</label></div></div>
+        <div class="field"><span class="label">Фильтры-чипы</span><div class="row"><span class="chip on">Действующие</span><span class="chip">Отменённые</span><span class="chip">Источник: <b>все</b></span></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Бейджи статусов<small>Цвет + точка + слово: статус читается даже при плохой цветопередаче.</small></h2>
+      <div class="stack">
+        <div class="demo"><span class="muted small" style="width:110px">Документ</span><span class="badge b-ok">Действует</span><span class="badge b-neutral">Отменён</span><span class="badge b-warn plain">Есть изменения</span><span class="badge b-outline plain">Общий</span><span class="badge b-neutral plain">Исключён из поиска</span></div>
+        <div class="demo"><span class="muted small" style="width:110px">Обработка</span><span class="badge b-info">В очереди</span><span class="badge b-accent b-run">Обрабатывается</span><span class="badge b-ok">Готово</span><span class="badge b-danger">Ошибка</span></div>
+        <div class="demo"><span class="muted small" style="width:110px">Пользователь</span><span class="badge b-ok">Активен</span><span class="badge b-danger">Заблокирован</span><span class="badge b-outline plain">Внешний</span><span class="badge b-info plain">Локальный</span><span class="badge b-warn plain">Тестовый</span></div>
+        <div class="demo"><span class="muted small" style="width:110px">Ссылки на источник</span><span>Ответ со ссылками<a class="cite">1</a><a class="cite">2</a> — по клику открывается документ на нужном месте.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Уведомления</h2>
+      <div class="stack">
+        <div class="alert a-warn"><svg class="i"><use href="#i-plug"/></svg><div><b>Документы из системы «Архив ОТ» сейчас недоступны</b>Ответ построен без них. Попробуйте повторить вопрос через несколько минут.</div></div>
+        <div class="alert a-danger"><svg class="i"><use href="#i-warn"/></svg><div><b>Не удалось загрузить документ</b>Файл повреждён: PDF не открывается. Администратор источника получил отчёт.</div></div>
+        <div class="alert a-info"><svg class="i"><use href="#i-info"/></svg><div><b>Вы вошли как гость</b>Доступны только общие документы. Войдите, чтобы искать по документам вашего подразделения.</div></div>
+        <div class="alert a-ok"><svg class="i"><use href="#i-check"/></svg><div><b>Роль сохранена</b>Права применятся при следующем запросе пользователей.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Таблица</h2>
+      <div class="card">
+        <table class="tbl">
+          <thead><tr><th>Номер</th><th>Название</th><th>Дата</th><th>Статус</th><th class="r">Чанков</th></tr></thead>
+          <tbody>
+            <tr><td class="num">112</td><td class="doc"><a href="#doc">О допуске персонала к работам на высоте</a></td><td class="num">14.03.2024</td><td><span class="badge b-ok">Действует</span></td><td class="r num">38</td></tr>
+            <tr class="sel"><td class="num">ИОТ-017</td><td class="doc"><a href="#doc">Инструкция по охране труда для стропальщика</a></td><td class="num">02.06.2023</td><td><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span></td><td class="r num">54</td></tr>
+            <tr><td class="num">45</td><td class="doc"><a href="#doc">О порядке работ на высоте</a></td><td class="num">02.02.2021</td><td><span class="badge b-neutral">Отменён</span></td><td class="r num">21</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ================= ВХОД ================= -->
+<p class="screen-note" data-for="login"><b>Вход.</b> Отдельная страница, на неё ведёт кнопка «Войти» в шапке. Пароль уходит в функцию проверки внешнего сервиса и нигде не сохраняется. Показано состояние с ошибкой и счётчиком попыток.</p>
+<div class="screen" id="login">
+  <div class="login">
+    <div class="login-brand">
+      <div class="logo-slot">ЛОГО</div>
+      <h1>Поиск по документам предприятия</h1>
+      <p>Приказы, инструкции и стандарты в одном окне. Ответы со ссылками на конкретный пункт документа.</p>
+      <ul>
+        <li>Только документы, к которым у вас есть доступ</li>
+        <li>Работает внутри сети завода</li>
+        <li>Без входа доступны общие документы</li>
+      </ul>
+    </div>
+    <div class="login-form">
+      <form>
+        <div><h2>Вход</h2><p class="muted" style="margin-top:6px">Используйте табельный номер и пароль от корпоративных систем.</p></div>
+        <div class="alert a-danger"><svg class="i"><use href="#i-warn"/></svg><div><b>Неверный табельный номер или пароль</b>Осталось 2 попытки, затем вход будет заблокирован на 15 минут.</div></div>
+        <div class="field"><label class="label" for="l1">Табельный номер</label><input class="input" id="l1" value="10234" style="height:48px;font-size:17px"></div>
+        <div class="field"><label class="label" for="l2">Пароль</label><input class="input err" id="l2" type="password" value="password1" style="height:48px;font-size:17px"></div>
+        <button class="btn btn-primary btn-lg" type="button">Войти</button>
+        <div class="divider">или</div>
+        <a class="btn btn-secondary btn-lg" href="#chat">Продолжить без входа</a>
+        <p class="small muted">Без входа можно задавать вопросы только по общим документам. Забыли пароль — обратитесь в отдел ИТ, тел. 22-15.</p>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ЧАТ ================= -->
+<p class="screen-note" data-for="chat"><b>Поиск и чат с источниками.</b> Ответ идёт потоком; номера в квадратиках ведут на источник справа и открывают документ на нужном пункте. Один источник недоступен — пользователь видит предупреждение. Второй вопрос показан в процессе: место в очереди к модели и этапы поиска.</p>
+<div class="screen" id="chat">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a class="on" href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Иванова А. С.<small>Отдел ОТ и ПБ · 10234</small></div><div class="avatar">АИ</div></div>
+  </header>
+  <div class="chat">
+    <aside class="chat-side">
+      <div class="top"><button class="btn btn-primary"><svg class="i"><use href="#i-plus"/></svg>Новый вопрос</button><div class="input-search"><svg class="i"><use href="#i-search"/></svg><input class="input" placeholder="Поиск по истории" aria-label="Поиск по истории"></div></div>
+      <div class="hist">
+        <h5>Сегодня</h5>
+        <a class="on" href="#chat">Допуск к работам на высоте</a>
+        <a href="#chat">Кто отвечает за грузоподъёмные механизмы в цехе №2</a>
+        <h5>Вчера</h5>
+        <a href="#chat">Периодичность проверки огнетушителей</a>
+        <a href="#chat">Что отменил приказ № 140</a>
+        <h5>Ранее</h5>
+        <a href="#chat">Действующие приказы по СИЗ</a>
+        <a href="#chat">Требования к журналу инструктажей</a>
+        <a href="#chat">Нормы освещённости на участке сборки</a>
+      </div>
+      <div class="foot">История хранится 90 дней</div>
+    </aside>
+    <section class="chat-main">
+      <div class="chat-filters">
+        <span class="chip">Источник: <b>все</b></span>
+        <span class="chip">Коллекция: <b>все</b></span>
+        <span class="chip">Тип: <b>приказы, инструкции</b></span>
+        <span class="chip">Дата: <b>любая</b></span>
+        <span class="chip on">Только действующие</span>
+        <span class="grow"></span>
+        <span class="small muted">Режим поиска</span>
+        <select class="select" style="width:150px;height:32px" aria-label="Режим поиска"><option>Смешанный</option><option>Обычный</option><option>Графовый</option></select>
+      </div>
+      <div class="msgs">
+        <div class="alert a-warn"><svg class="i"><use href="#i-plug"/></svg><div><b>Документы из системы «Архив ОТ» сейчас недоступны</b>Ответ построен по остальным источникам.</div></div>
+        <div class="q"><small>Вы · 14:02</small>Какие документы нужны для допуска стропальщика к работам на высоте?</div>
+        <div class="a">
+          <div class="a-h"><span class="a-mark">AI</span>Ответ по 3 документам</div>
+          <div class="a-body">
+            <p>Для допуска к работам на высоте стропальщик должен иметь:</p>
+            <ol>
+              <li>Наряд-допуск по форме приложения 2, подписанный ответственным руководителем <span style="white-space:nowrap">работ<a class="cite" href="#doc">1</a>.</span></li>
+              <li>Удостоверение о проверке знаний требований охраны труда при работе на высоте, 2-я группа по <span style="white-space:nowrap">безопасности<a class="cite" href="#doc">1</a><a class="cite">3</a>.</span></li>
+              <li>Отметку о прохождении целевого инструктажа в журнале перед началом <span style="white-space:nowrap">смены<a class="cite">2</a>.</span></li>
+            </ol>
+            <p>Работы на высоте более 5 м без страховочной системы запрещены (п. 4.7 инструкции <span style="white-space:nowrap">ИОТ-017)<a class="cite">2</a>.</span></p>
+          </div>
+          <div class="a-foot"><span>Сгенерировано за 9 с</span><span>·</span><a href="#chat">Скопировать</a><span>·</span><a href="#chat">Ответ неточный</a></div>
+        </div>
+        <div class="q"><small>Вы · 14:05</small>А кто подписывает наряд-допуск в литейном цехе №2?</div>
+        <div class="a">
+          <div class="a-h"><span class="a-mark">AI</span>Готовлю ответ</div>
+          <div class="steps"><span class="done"><svg class="i" style="width:15px;height:15px"><use href="#i-check"/></svg>Найдено 14 фрагментов</span><span class="done"><svg class="i" style="width:15px;height:15px"><use href="#i-check"/></svg>Отобрано 5 лучших</span><span class="cur"><span class="typing"><i></i><i></i><i></i></span>Ожидание модели: вы 2-й в очереди</span></div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="composer-box"><textarea rows="2" placeholder="Задайте вопрос по документам предприятия" aria-label="Вопрос"></textarea><button class="btn btn-primary" disabled><svg class="i"><use href="#i-send"/></svg>Отправить</button></div>
+        <p class="small muted" style="margin-top:6px">Enter — отправить, Shift+Enter — новая строка. Ответ строится только по документам, доступным вам.</p>
+      </div>
+    </section>
+    <aside class="sources">
+      <div class="sources-h"><h3>Источники ответа</h3><p class="small muted">Нажмите, чтобы открыть документ на этом месте</p></div>
+      <div class="src-list">
+        <a class="src on" href="#doc" style="text-decoration:none;color:inherit">
+          <div class="src-t"><span class="cite">1</span>Приказ № 112 от 14.03.2024 «О допуске персонала к работам на высоте»</div>
+          <div class="src-meta"><span class="badge b-ok">Действует</span><span>стр. 3, п. 4.2</span><span>Документооборот</span></div>
+          <div class="src-q">…допуск к работам на высоте осуществляется по <mark>наряду-допуску</mark> (приложение 2), который подписывает ответственный руководитель работ…</div>
+        </a>
+        <div class="src">
+          <div class="src-t"><span class="cite">2</span>ИОТ-017 Инструкция по охране труда для стропальщика</div>
+          <div class="src-meta"><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span><span>раздел 4, п. 4.7</span><span>Документооборот</span></div>
+          <div class="src-q">…выполнение работ на высоте более 5 м <mark>без страховочной системы</mark> запрещается…</div>
+        </div>
+        <div class="src">
+          <div class="src-t"><span class="cite">3</span>СТП 08-2023 Обучение и проверка знаний по охране труда</div>
+          <div class="src-meta"><span class="badge b-ok">Действует</span><span>табл. 2</span><span>Ручная загрузка</span></div>
+          <div class="src-q">Стропальщик | работы на высоте | <mark>2 группа</mark> | 1 раз в 3 года</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ================= ДОКУМЕНТ ================= -->
+<p class="screen-note" data-for="doc"><b>Просмотр документа с подсветкой найденного места.</b> Открывается по клику на источник: страница прокручена к пункту, фрагмент выделен. Справа реквизиты и связи из графа (что отменяет, чем изменён).</p>
+<div class="screen" id="doc">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a class="on" href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Иванова А. С.<small>Отдел ОТ и ПБ · 10234</small></div><div class="avatar">АИ</div></div>
+  </header>
+  <div class="doc-toolbar">
+    <a class="btn btn-ghost btn-sm" href="#chat"><svg class="i"><use href="#i-back"/></svg>К ответу</a>
+    <div class="grow"><b style="font-size:var(--fs-18)">Приказ № 112 от 14.03.2024</b> <span class="muted">«О допуске персонала к работам на высоте»</span></div>
+    <span class="badge b-ok">Действует</span><span class="badge b-warn plain">Есть изменения</span>
+    <span class="small muted num">Фрагмент 1 из 2</span>
+    <button class="btn btn-secondary btn-sm">Предыдущий</button><button class="btn btn-secondary btn-sm">Следующий</button>
+    <button class="btn btn-secondary btn-sm"><svg class="i"><use href="#i-down"/></svg>Скачать PDF</button>
+  </div>
+  <div class="docv" style="height:824px">
+    <nav class="toc" aria-label="Содержание">
+      <a href="#doc">1. Общие положения</a>
+      <a href="#doc">2. Термины</a>
+      <a href="#doc">3. Ответственные лица</a>
+      <a href="#doc">4. Порядок допуска</a>
+      <a class="sub" href="#doc">4.1 Обучение</a>
+      <a class="sub on" href="#doc">4.2 Наряд-допуск</a>
+      <a class="sub" href="#doc">4.3 Инструктаж</a>
+      <a href="#doc">5. Контроль</a>
+      <a href="#doc">Приложение 1. Перечень работ</a>
+      <a href="#doc">Приложение 2. Форма наряда-допуска</a>
+    </nav>
+    <div class="sheet-wrap">
+      <article class="sheet">
+        <h2>4. ПОРЯДОК ДОПУСКА К РАБОТАМ НА ВЫСОТЕ</h2>
+        <p>4.1. К работам на высоте допускаются работники не моложе 18 лет, прошедшие медицинский осмотр, обучение безопасным методам и приёмам выполнения работ на высоте и проверку знаний.</p>
+        <p class="hl">4.2. Допуск к работам на высоте осуществляется по наряду-допуску (приложение 2), который подписывает ответственный руководитель работ. Наряд-допуск выдаётся на срок не более 15 календарных дней.</p>
+        <p>4.3. Перед началом работ ответственный исполнитель проводит целевой инструктаж с отметкой в журнале и в наряде-допуске.</p>
+        <p>4.4. Группы по безопасности работ на высоте:</p>
+        <table>
+          <tr><th>Группа</th><th>Кто</th><th>Периодичность</th></tr>
+          <tr><td>1</td><td>Работники, выполняющие работы в составе бригады</td><td>1 раз в 3 года</td></tr>
+          <tr><td>2</td><td>Мастера, бригадиры, стропальщики</td><td>1 раз в 3 года</td></tr>
+          <tr><td>3</td><td>Ответственные руководители работ</td><td>1 раз в 3 года</td></tr>
+        </table>
+        <p>4.5. Ответственным за организацию работ на высоте в литейном цехе № 2 назначить начальника цеха Петрова В. Н.</p>
+        <div class="pno">Страница 3 из 9</div>
+      </article>
+    </div>
+    <aside class="meta-side">
+      <div><h4>Реквизиты</h4>
+        <dl class="kv" style="margin-top:10px;grid-template-columns:110px 1fr">
+          <dt>Тип</dt><dd>Приказ</dd><dt>Номер</dt><dd class="num">112</dd><dt>Дата</dt><dd class="num">14.03.2024</dd><dt>Тема</dt><dd>Охрана труда</dd><dt>Подразделение</dt><dd>Служба ОТ и ПБ</dd><dt>Источник</dt><dd>Документооборот</dd><dt>Файлы</dt><dd><a href="#doc">prikaz_112.pdf</a>, 9 стр.</dd>
+        </dl>
+      </div>
+      <div class="rel"><h4>Связи</h4>
+        <a href="#doc"><em>Отменяет</em><span class="badge b-neutral">Отменён</span><span>Приказ № 45 от 02.02.2021 «О порядке работ на высоте»</span></a>
+        <a href="#doc"><em>Изменён документом</em><span class="badge b-ok">Действует</span><span>Приказ № 140 от 20.05.2024 «О внесении изменений в приказ № 112»</span></a>
+        <a href="#doc"><em>Ссылается на</em><span class="badge b-ok">Действует</span><span>ИОТ-017 Инструкция по охране труда для стропальщика</span></a>
+      </div>
+      <div><h4>Упоминаются</h4><div class="row wrap" style="margin-top:10px"><span class="badge b-outline plain">Петров В. Н.</span><span class="badge b-outline plain">Литейный цех № 2</span><span class="badge b-outline plain">Наряд-допуск</span><span class="badge b-outline plain">15 дней</span></div></div>
+    </aside>
+  </div>
+</div>
+
+<!-- ================= СПИСОК ДОКУМЕНТОВ ================= -->
+<p class="screen-note" data-for="docs"><b>Список документов с фильтрами.</b> Показываются только документы, разрешённые пользователю источниками.</p>
+<div class="screen" id="docs">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a class="on" href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Иванова А. С.<small>Отдел ОТ и ПБ · 10234</small></div><div class="avatar">АИ</div></div>
+  </header>
+  <div class="page">
+    <div class="page-h"><div class="grow"><h1>Документы</h1><p>Доступно вам: <span class="num">1 284</span> из 4 812 в системе</p></div></div>
+    <div class="card" style="margin-bottom:16px"><div class="card-b" style="display:grid;grid-template-columns:2fr repeat(4,1fr) auto;gap:12px;align-items:end;padding:16px">
+      <div class="field"><label class="label" for="f1">Поиск</label><div class="input-search"><svg class="i"><use href="#i-search"/></svg><input class="input" id="f1" value="высот"></div></div>
+      <div class="field"><label class="label" for="f2">Источник</label><select class="select" id="f2"><option>Все</option></select></div>
+      <div class="field"><label class="label" for="f3">Тип</label><select class="select" id="f3"><option>Приказ</option></select></div>
+      <div class="field"><label class="label" for="f4">Дата</label><select class="select" id="f4"><option>За всё время</option></select></div>
+      <div class="field"><label class="label" for="f5">Статус</label><select class="select" id="f5"><option>Любой</option></select></div>
+      <button class="btn btn-ghost">Сбросить</button>
+    </div></div>
+    <div class="card">
+      <table class="tbl">
+        <thead><tr><th style="width:110px">Номер</th><th>Название</th><th>Тип</th><th>Источник</th><th>Дата ↓</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="num">140</td><td class="doc"><a href="#doc">О внесении изменений в приказ № 112</a></td><td>Приказ</td><td>Документооборот</td><td class="num">20.05.2024</td><td><span class="badge b-ok">Действует</span></td><td></td></tr>
+          <tr><td class="num">112</td><td class="doc"><a href="#doc">О допуске персонала к работам на высоте</a></td><td>Приказ</td><td>Документооборот</td><td class="num">14.03.2024</td><td><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span></td><td><span class="badge b-outline plain">Общий</span></td></tr>
+          <tr><td class="num">СТП 08-2023</td><td class="doc"><a href="#doc">Обучение и проверка знаний по охране труда</a></td><td>Стандарт</td><td>Ручная загрузка</td><td class="num">11.10.2023</td><td><span class="badge b-ok">Действует</span></td><td><span class="badge b-outline plain">Общий</span></td></tr>
+          <tr><td class="num">ИОТ-017</td><td class="doc"><a href="#doc">Инструкция по охране труда для стропальщика</a></td><td>Инструкция</td><td>Документооборот</td><td class="num">02.06.2023</td><td><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span></td><td></td></tr>
+          <tr><td class="num">ИОТ-031</td><td class="doc"><a href="#doc">Инструкция по охране труда при работе на высоте</a></td><td>Инструкция</td><td>Документооборот</td><td class="num">17.01.2023</td><td><span class="badge b-ok">Действует</span></td><td></td></tr>
+          <tr><td class="num">88</td><td class="doc"><a href="#doc">О назначении ответственных за безопасное производство работ с ПС</a></td><td>Приказ</td><td>Документооборот</td><td class="num">05.09.2022</td><td><span class="badge b-ok">Действует</span></td><td></td></tr>
+          <tr><td class="num">45</td><td class="doc"><a href="#doc">О порядке работ на высоте</a></td><td>Приказ</td><td>Документооборот</td><td class="num">02.02.2021</td><td><span class="badge b-neutral">Отменён</span></td><td></td></tr>
+          <tr><td class="num">РИ-12</td><td class="doc"><a href="#doc">Рабочая инструкция машиниста мостового крана</a></td><td>Инструкция</td><td>Архив ОТ</td><td class="num">23.11.2020</td><td><span class="badge b-ok">Действует</span></td><td></td></tr>
+        </tbody>
+      </table>
+      <div class="pager"><span class="num">1–8 из 37</span><span class="grow"></span><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">4</span><span class="pg">5</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ПРОТИВОРЕЧИЯ ================= -->
+<p class="screen-note" data-for="contra"><b>Противоречия.</b> Видно только с правом «просмотр противоречий» и только для пар, где пользователю доступны оба документа. Пары с отменёнными документами в активные не попадают.</p>
+<div class="screen" id="contra">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a class="on" href="#contra">Противоречия<span class="cnt">12</span></a><a href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Иванова А. С.<small>Отдел ОТ и ПБ · 10234</small></div><div class="avatar">АИ</div></div>
+  </header>
+  <div class="page">
+    <div class="page-h"><div class="grow"><h1>Противоречия</h1><p>Найдены автоматически. Показаны только пары, где оба документа доступны вам.</p></div><select class="select" style="width:220px" aria-label="Тема"><option>Все темы</option></select></div>
+    <div class="tabs" style="margin-bottom:20px"><a class="on" href="#contra">Новые<span class="cnt">12</span></a><a href="#contra">Подтверждённые<span class="cnt">5</span></a><a href="#contra">Отклонённые<span class="cnt">31</span></a></div>
+    <div class="stack" style="gap:16px">
+      <article class="cpair">
+        <div class="cpair-h"><span class="badge b-danger">Прямое противоречие</span><b>Периодичность проверки знаний по работам на высоте</b><span class="grow"></span><span class="small muted">Найдено 28.10.2026</span></div>
+        <div class="cpair-b">
+          <div><a href="#doc" style="font-weight:600;color:var(--ink-900)">СТП 08-2023, табл. 2</a><span class="row"><span class="badge b-ok">Действует</span><span class="small muted">11.10.2023</span></span><blockquote>Стропальщик, работы на высоте, 2 группа — проверка знаний <mark>1 раз в 3 года</mark>.</blockquote></div>
+          <div><a href="#doc" style="font-weight:600;color:var(--ink-900)">ИОТ-031, п. 2.4</a><span class="row"><span class="badge b-ok">Действует</span><span class="small muted">17.01.2023</span></span><blockquote>Работники 1 и 2 групп проходят проверку знаний <mark>не реже одного раза в год</mark>.</blockquote></div>
+        </div>
+        <div class="cpair-why"><svg class="i"><use href="#i-info"/></svg><span>Оба документа действуют и задают разную периодичность для одной и той же группы работников. Более поздний документ (СТП 08-2023) не ссылается на ИОТ-031.</span></div>
+        <div class="cpair-f"><button class="btn btn-dark btn-sm">Подтвердить</button><button class="btn btn-secondary btn-sm">Отклонить</button><span class="grow"></span><a class="btn btn-ghost btn-sm" href="#doc"><svg class="i"><use href="#i-split"/></svg>Открыть рядом</a></div>
+      </article>
+      <article class="cpair mid">
+        <div class="cpair-h"><span class="badge b-warn">Возможное</span><b>Срок действия наряда-допуска</b><span class="grow"></span><span class="small muted">Найдено 27.10.2026</span></div>
+        <div class="cpair-b">
+          <div><a href="#doc" style="font-weight:600;color:var(--ink-900)">Приказ № 112, п. 4.2</a><span class="row"><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span><span class="small muted">14.03.2024</span></span><blockquote>Наряд-допуск выдаётся на срок <mark>не более 15 календарных дней</mark>.</blockquote></div>
+          <div><a href="#doc" style="font-weight:600;color:var(--ink-900)">РИ-12, п. 6.1</a><span class="row"><span class="badge b-ok">Действует</span><span class="small muted">23.11.2020</span></span><blockquote>Наряд-допуск на работы на крановых путях оформляется <mark>на смену</mark>.</blockquote></div>
+        </div>
+        <div class="cpair-why"><svg class="i"><use href="#i-info"/></svg><span>Возможно, это не противоречие: РИ-12 описывает частный случай (крановые пути). Требуется проверка специалистом.</span></div>
+        <div class="cpair-f"><button class="btn btn-dark btn-sm">Подтвердить</button><button class="btn btn-secondary btn-sm">Отклонить</button><span class="grow"></span><a class="btn btn-ghost btn-sm" href="#doc"><svg class="i"><use href="#i-split"/></svg>Открыть рядом</a></div>
+      </article>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: ПОЛЬЗОВАТЕЛИ ================= -->
+<p class="screen-note" data-for="a-users"><b>Админка: пользователи и группы.</b> Пользователей не регистрируем: они приходят из внешнего сервиса по табельному номеру. Локальные и тестовые учётки помечены.</p>
+<div class="screen" id="a-users">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a class="on" href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="page-h"><div class="grow"><h1>Пользователи и группы</h1><p>Пользователь появляется здесь после первого входа. Права = роли пользователя + роли его групп.</p></div><button class="btn btn-secondary"><svg class="i"><use href="#i-plus"/></svg>Локальная учётка</button><button class="btn btn-primary"><svg class="i"><use href="#i-plus"/></svg>Назначить роль</button></div>
+      <div class="tabs" style="margin-bottom:16px"><a class="on" href="#a-users">Пользователи<span class="cnt">214</span></a><a href="#a-users">Группы<span class="cnt">9</span></a></div>
+      <div class="row" style="margin-bottom:12px"><div class="input-search" style="width:360px"><svg class="i"><use href="#i-search"/></svg><input class="input" placeholder="ФИО или табельный номер" aria-label="Поиск пользователя"></div><select class="select" style="width:180px" aria-label="Группа"><option>Все группы</option></select><select class="select" style="width:160px" aria-label="Тип учётки"><option>Все типы</option></select></div>
+      <div class="card">
+        <table class="tbl">
+          <thead><tr><th>Таб. №</th><th>ФИО</th><th>Подразделение</th><th>Группы</th><th>Роли</th><th>Учётка</th><th>Последний вход</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="num mono">10234</td><td><b>Иванова Анна Сергеевна</b></td><td>Служба ОТ и ПБ</td><td>Отдел ОТ и ПБ</td><td>Пользователь, Аналитик</td><td><span class="badge b-outline plain">Внешний</span></td><td class="num">31.10.2026 14:01</td><td><span class="badge b-ok">Активен</span></td><td><button class="btn btn-ghost btn-sm">Изменить</button></td></tr>
+            <tr><td class="num mono">00017</td><td><b>Сидоров Кирилл Павлович</b></td><td>Отдел ИТ</td><td>—</td><td>Администратор</td><td><span class="badge b-outline plain">Внешний</span></td><td class="num">31.10.2026 13:40</td><td><span class="badge b-ok">Активен</span></td><td><button class="btn btn-ghost btn-sm">Изменить</button></td></tr>
+            <tr><td class="num mono">20871</td><td><b>Петров Виктор Николаевич</b></td><td>Литейный цех № 2</td><td>Руководители цехов</td><td>Пользователь</td><td><span class="badge b-outline plain">Внешний</span></td><td class="num">30.10.2026 08:12</td><td><span class="badge b-ok">Активен</span></td><td><button class="btn btn-ghost btn-sm">Изменить</button></td></tr>
+            <tr><td class="num mono">31455</td><td><b>Орлова Мария Ильинична</b></td><td>Сборочный цех</td><td>—</td><td>Пользователь</td><td><span class="badge b-outline plain">Внешний</span></td><td class="num">29.10.2026 16:55</td><td><span class="badge b-danger">Заблокирован</span><div class="small muted">5 неудачных попыток</div></td><td><button class="btn btn-ghost btn-sm">Разблокировать</button></td></tr>
+            <tr><td class="num mono">admin</td><td><b>Аварийный администратор</b></td><td>—</td><td>—</td><td>Администратор</td><td><span class="badge b-info plain">Локальный</span></td><td class="num">—</td><td><span class="badge b-ok">Активен</span></td><td><button class="btn btn-ghost btn-sm">Изменить</button></td></tr>
+            <tr><td class="num mono">T-0003</td><td><b>Тест: без доступа к Архиву ОТ</b></td><td>—</td><td>—</td><td>Пользователь</td><td><span class="badge b-warn plain">Тестовый</span></td><td class="num">31.10.2026 12:30</td><td><span class="badge b-ok">Активен</span></td><td><button class="btn btn-ghost btn-sm">Изменить</button></td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span class="num">1–6 из 214</span><span class="grow"></span><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span>…</span><span class="pg">36</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: РОЛИ ================= -->
+<p class="screen-note" data-for="a-roles"><b>Роли и права.</b> Роль — набор галочек. «Пользователь», «Администратор» и «Гость» встроенные: их нельзя удалить, а гостю нельзя выдать больше общих документов. Навыки появляются как отдельные права.</p>
+<div class="screen" id="a-roles">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a class="on" href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="page-h"><div class="grow"><h1>Роли и права</h1><p>Изменения применяются сразу. Каждое изменение пишется в журнал аудита.</p></div><button class="btn btn-secondary"><svg class="i"><use href="#i-plus"/></svg>Новая роль</button><button class="btn btn-primary">Сохранить</button></div>
+      <div class="card" style="overflow-x:auto">
+        <table class="tbl matrix">
+          <thead><tr><th style="width:44%">Право</th><th>Гость <svg class="i" style="width:14px;height:14px;vertical-align:-2px"><use href="#i-lock"/></svg></th><th>Пользователь <svg class="i" style="width:14px;height:14px;vertical-align:-2px"><use href="#i-lock"/></svg></th><th>Аналитик</th><th>Специалист ОТ</th><th>Администратор <svg class="i" style="width:14px;height:14px;vertical-align:-2px"><use href="#i-lock"/></svg></th></tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="6">Поиск и документы</td></tr>
+            <tr><td>Поиск и вопросы по общим документам<span class="code">search.common</span></td><td><input type="checkbox" checked aria-label="Гость"></td><td><input type="checkbox" checked aria-label="Пользователь"></td><td><input type="checkbox" checked aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Просмотр документов по правам источника<span class="code">documents.view</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" checked aria-label="Пользователь"></td><td><input type="checkbox" checked aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Ручная загрузка документов<span class="code">documents.upload_manual</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr class="grp"><td colspan="6">Противоречия</td></tr>
+            <tr><td>Просмотр противоречий<span class="code">contradictions.view</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" checked aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Подтверждение и отклонение<span class="code">contradictions.manage</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr class="grp"><td colspan="6">Администрирование</td></tr>
+            <tr><td>Пользователи и группы<span class="code">admin.users</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Роли и права<span class="code">admin.roles</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Источники и синхронизация<span class="code">admin.integrations</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr><td>Журнал аудита<span class="code">audit.view</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" checked aria-label="Аналитик"></td><td><input type="checkbox" aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+            <tr class="grp"><td colspan="6">Навыки</td></tr>
+            <tr><td>Проверка папки на соответствие ЕПОЗ <span class="badge b-neutral plain" style="height:20px;font-size:11px">скоро</span><span class="code">skill.epoz_check.use</span></td><td><input type="checkbox" disabled aria-label="Гость"></td><td><input type="checkbox" aria-label="Пользователь"></td><td><input type="checkbox" aria-label="Аналитик"></td><td><input type="checkbox" checked aria-label="Специалист ОТ"></td><td><input type="checkbox" checked disabled aria-label="Администратор"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted" style="margin-top:10px">Серые недоступные флажки у гостя — права, которые нельзя выдать без входа. Встроенного администратора нельзя лишить прав, иначе в админку никто не попадёт.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: ИСТОЧНИКИ ================= -->
+<p class="screen-note" data-for="a-sources"><b>Источники и отчёт о синхронизации.</b> Сколько документов у источника, сколько загружено, сколько с ошибкой и почему. Первичная индексация идёт часами, поэтому виден прогресс и прогноз.</p>
+<div class="screen" id="a-sources">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a class="on" href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="crumbs"><a href="#a-sources">Источники</a> / Документооборот</div>
+      <div class="page-h"><div class="grow"><h1>Документооборот</h1><p>Подключён 12.10.2026 · синхронизация каждые 15 минут · ночная сверка в 02:00</p></div><span class="badge b-ok">Источник отвечает</span><button class="btn btn-secondary">Настройки</button><button class="btn btn-primary"><svg class="i"><use href="#i-refresh"/></svg>Синхронизировать сейчас</button></div>
+      <div class="tiles" style="margin-bottom:16px">
+        <div class="tile"><div class="l">У источника</div><div class="n">4 812</div><div class="d">без удалённых</div></div>
+        <div class="tile t-ok"><div class="l">Загружено</div><div class="n">3 120</div><div class="d">65 % · последняя 14:07</div></div>
+        <div class="tile t-accent"><div class="l">В очереди</div><div class="n">1 683</div><div class="d">обрабатывается 1</div></div>
+        <div class="tile t-danger"><div class="l">С ошибкой</div><div class="n">9</div><div class="d">повторы исчерпаны</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px"><div class="card-b" style="display:grid;gap:10px">
+        <div class="row"><b>Первичная индексация</b><span class="grow"></span><span class="num small muted">3 120 из 4 812 · ≈ 4,8 документа в минуту · осталось ≈ 5 ч 50 мин</span></div>
+        <div class="progress" style="height:12px"><i style="width:65%"></i></div>
+        <p class="small muted">Продолжится с того же места после перезапуска сервера. Пока пользователи задают вопросы, фоновая обработка уступает им видеокарту.</p>
+      </div></div>
+      <div class="card">
+        <div class="card-h"><h3>Документы с ошибкой</h3><span class="badge b-danger plain">9</span><span class="grow"></span><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#i-refresh"/></svg>Повторить все</button></div>
+        <table class="tbl">
+          <thead><tr><th>Документ</th><th>Версия источника</th><th>Этап</th><th>Причина</th><th>Попыток</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="doc"><a href="#a-doc">Приказ № 97 от 03.07.2019</a><div class="small muted mono">4f2a…91c0</div></td><td class="num">12.08.2025 10:14</td><td>Парсинг</td><td>PDF не открывается: файл повреждён (размер 0 байт)</td><td class="num">3</td><td><button class="btn btn-secondary btn-sm">Повторить</button></td></tr>
+            <tr><td class="doc"><a href="#a-doc">Журнал регистрации инструктажей, форма 3</a><div class="small muted mono">a71e…0d2b</div></td><td class="num">01.10.2026 09:30</td><td>Проверка полноты</td><td>Табличная часть «Строки»: ожидалось 148 строк, пришло 120</td><td class="num">3</td><td><button class="btn btn-secondary btn-sm">Повторить</button></td></tr>
+            <tr><td class="doc"><a href="#a-doc">ИОТ-044 Электросварщик</a><div class="small muted mono">c03b…77fa</div></td><td class="num">17.09.2026 15:02</td><td>OCR</td><td>Скан низкого качества: распознано менее 20 % страницы 4</td><td class="num">3</td><td><button class="btn btn-secondary btn-sm">Повторить</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: КАРТОЧКА ДОКУМЕНТА ================= -->
+<p class="screen-note" data-for="a-doc"><b>Карточка документа с чанками.</b> Метаданные, статус, связи, нарезка на фрагменты и распознанный текст. Кнопки «Исключить из поиска» и «Переиндексировать».</p>
+<div class="screen" id="a-doc">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a class="on" href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="crumbs"><a href="#a-doc">Коллекции</a> / <a href="#a-doc">Документооборот</a> / Приказ № 112</div>
+      <div class="page-h"><div class="grow"><h1>Приказ № 112 от 14.03.2024</h1><p>«О допуске персонала к работам на высоте»</p></div><span class="badge b-ok">Действует</span> <span class="badge b-warn plain">Есть изменения</span><span class="badge b-ok">Готово</span><button class="btn btn-secondary">Исключить из поиска</button><button class="btn btn-dark"><svg class="i"><use href="#i-refresh"/></svg>Переиндексировать</button></div>
+      <div style="display:grid;grid-template-columns:360px 1fr;gap:16px;align-items:start">
+        <div class="card"><div class="card-b">
+          <dl class="kv" style="grid-template-columns:130px 1fr">
+            <dt>Наш id</dt><dd class="mono">D-003118</dd><dt>Id в источнике</dt><dd class="mono">7c1d…e5a4</dd><dt>Версия</dt><dd class="num">20.05.2024 11:42</dd><dt>Тема</dt><dd>Охрана труда</dd><dt>Общий</dt><dd><label class="check"><input type="checkbox" checked id="ad1"> Да, из источника</label></dd><dt>Файлы</dt><dd>prikaz_112.pdf<br><span class="small muted">9 стр., текстовый слой, 412 КБ</span></dd><dt>Табличные части</dt><dd>«Ознакомлены» — 46 строк</dd><dt>Фрагментов</dt><dd class="num">38</dd><dt>Сущностей в графе</dt><dd class="num">17</dd><dt>Связи</dt><dd>Отменяет № 45<br>Изменён № 140</dd>
+          </dl>
+        </div></div>
+        <div class="card">
+          <div class="tabs" style="padding:0 12px"><a class="on" href="#a-doc">Фрагменты<span class="cnt">38</span></a><a href="#a-doc">Распознанный текст</a><a href="#a-doc">Сущности<span class="cnt">17</span></a><a href="#a-doc">История<span class="cnt">4</span></a></div>
+          <div class="stack" style="padding:16px">
+            <div class="chunk"><div class="chunk-h"><b>№ 11</b><span>стр. 3</span><span>раздел 4.2 «Наряд-допуск»</span><span class="grow"></span><span class="num">212 токенов</span></div><div class="chunk-b">4.2. Допуск к работам на высоте осуществляется по наряду-допуску (приложение 2), который подписывает ответственный руководитель работ. Наряд-допуск выдаётся на срок не более 15 календарных дней.</div></div>
+            <div class="chunk"><div class="chunk-h"><b>№ 12</b><span>стр. 3</span><span>раздел 4.4, таблица</span><span class="grow"></span><span class="num">164 токена</span></div><div class="chunk-b">| Группа | Кто | Периодичность |
+|---|---|---|
+| 1 | Работники в составе бригады | 1 раз в 3 года |
+| 2 | Мастера, бригадиры, стропальщики | 1 раз в 3 года |
+| 3 | Ответственные руководители работ | 1 раз в 3 года |</div></div>
+            <div class="chunk"><div class="chunk-h"><b>№ 37</b><span>шапка источника</span><span>табличная часть «Ознакомлены»</span><span class="grow"></span><span class="num">390 токенов</span></div><div class="chunk-b">## Приказ № 112 от 14.03.2024
+Тема: Охрана труда · Подразделение: Служба ОТ и ПБ
+| Таб. № | ФИО | Дата ознакомления |
+|---|---|---|
+| 20871 | Петров В. Н. | 15.03.2024 |</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: АУДИТ ================= -->
+<p class="screen-note" data-for="a-audit"><b>Журнал аудита.</b> Входы, вопросы (кто, когда, что спросил, какие документы попали в ответ), действия администраторов. Пароли не пишутся никогда.</p>
+<div class="screen" id="a-audit">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a class="on" href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="page-h"><div class="grow"><h1>Журнал аудита</h1><p>Хранится 365 дней (настраивается)</p></div><button class="btn btn-secondary"><svg class="i"><use href="#i-down"/></svg>Выгрузить CSV</button></div>
+      <div class="row wrap" style="margin-bottom:12px"><span class="chip on">Все события</span><span class="chip">Входы</span><span class="chip">Вопросы</span><span class="chip">Админ-действия</span><span class="chip">Гости</span><span class="grow"></span><input class="input" style="width:260px" placeholder="Таб. № или IP" aria-label="Фильтр по пользователю"><select class="select" style="width:180px" aria-label="Период"><option>Последние 7 дней</option></select></div>
+      <div class="card">
+        <table class="tbl">
+          <thead><tr><th>Время</th><th>Кто</th><th>Событие</th><th>Подробности</th><th>IP</th></tr></thead>
+          <tbody>
+            <tr><td class="num">31.10.2026 14:05:12</td><td>Иванова А. С. <span class="muted mono">10234</span></td><td><span class="badge b-info plain">Вопрос</span></td><td>«А кто подписывает наряд-допуск в литейном цехе №2?» → Приказ № 112, Приказ № 88</td><td class="num mono">10.4.18.22</td></tr>
+            <tr><td class="num">31.10.2026 14:02:40</td><td>Иванова А. С. <span class="muted mono">10234</span></td><td><span class="badge b-info plain">Вопрос</span></td><td>«Какие документы нужны для допуска стропальщика…» → Приказ № 112, ИОТ-017, СТП 08-2023</td><td class="num mono">10.4.18.22</td></tr>
+            <tr><td class="num">31.10.2026 14:01:03</td><td>Иванова А. С. <span class="muted mono">10234</span></td><td><span class="badge b-ok plain">Вход</span></td><td>Успешный вход, внешний сервис</td><td class="num mono">10.4.18.22</td></tr>
+            <tr><td class="num">31.10.2026 13:52:19</td><td>Сидоров К. П. <span class="muted mono">00017</span></td><td><span class="badge b-accent plain">Админ</span></td><td>Роль «Аналитик»: добавлено право <span class="mono">contradictions.view</span></td><td class="num mono">10.4.2.5</td></tr>
+            <tr><td class="num">31.10.2026 13:30:44</td><td>Гость</td><td><span class="badge b-neutral plain">Вопрос гостя</span></td><td>«График работы столовой» → общие документы: ответа нет</td><td class="num mono">10.4.31.140</td></tr>
+            <tr><td class="num">31.10.2026 12:58:01</td><td>— <span class="muted mono">31455</span></td><td><span class="badge b-danger plain">Блокировка</span></td><td>5 неудачных попыток входа подряд, заблокирован на 15 минут</td><td class="num mono">10.4.27.9</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= АДМИН: СОСТОЯНИЕ ================= -->
+<p class="screen-note" data-for="a-health"><b>Состояние системы.</b> Видеокарта и её память, загруженные модели, очередь к модели и фоновые задачи, сервисы.</p>
+<div class="screen" id="a-health">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a href="#chat">Поиск</a><a href="#docs">Документы</a><a href="#contra">Противоречия<span class="cnt">12</span></a><a class="on" href="#a-users">Администрирование</a></nav>
+    <div class="hright"><div class="huser">Сидоров К. П.<small>Администратор · 00017</small></div><div class="avatar">КС</div></div>
+  </header>
+  <div class="admin">
+    <nav class="anav" aria-label="Администрирование">
+      <h4>Доступ</h4>
+      <a href="#a-users"><svg class="i"><use href="#i-users"/></svg>Пользователи и группы</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-shield"/></svg>Роли и права</a>
+      <h4>Документы</h4>
+      <a href="#a-sources"><svg class="i"><use href="#i-db"/></svg>Источники<span class="badge b-danger plain">9</span></a>
+      <a href="#a-doc"><svg class="i"><use href="#i-doc"/></svg>Коллекции и документы</a>
+      <h4>Система</h4>
+      <a href="#a-audit"><svg class="i"><use href="#i-list"/></svg>Журнал аудита</a>
+      <a class="on" href="#a-health"><svg class="i"><use href="#i-cpu"/></svg>Состояние системы</a>
+      <a href="#a-health"><svg class="i"><use href="#i-key"/></svg>API-ключи</a>
+      <a href="#a-roles"><svg class="i"><use href="#i-puzzle"/></svg>Навыки</a>
+    </nav>
+    <div class="page">
+      <div class="page-h"><div class="grow"><h1>Состояние системы</h1><p>Обновляется каждые 5 секунд</p></div><span class="badge b-ok">Все сервисы работают</span></div>
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card"><div class="card-h"><h3>Видеокарта</h3><span class="small muted">NVIDIA GeForce GTX 1070 · драйвер 472.12</span></div><div class="card-b" style="display:grid;gap:18px">
+          <div class="gauge"><div class="row"><b>Видеопамять</b><span class="grow"></span><span class="num">6,9 из 8,0 ГБ</span></div><div class="progress warn"><i style="width:86%"></i></div><span class="small muted">Свободно 1,1 ГБ. Выше 95 % модели начнут выгружаться на процессор и ответы замедлятся в разы.</span></div>
+          <div class="gauge"><div class="row"><b>Загрузка</b><span class="grow"></span><span class="num">72 %</span></div><div class="progress"><i style="width:72%"></i></div></div>
+          <div class="row small muted num"><span>Температура 71 °C</span><span>·</span><span>Генерация 24 токена/с</span></div>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Очередь к модели</h3></div><div class="card-b" style="display:grid;gap:12px">
+          <div class="tiles" style="grid-template-columns:repeat(3,1fr);gap:10px">
+            <div class="tile t-accent" style="padding:10px 12px"><div class="l">Генерация</div><div class="n" style="font-size:24px">1</div></div>
+            <div class="tile" style="padding:10px 12px"><div class="l">Ждут</div><div class="n" style="font-size:24px">2</div></div>
+            <div class="tile" style="padding:10px 12px"><div class="l">Гостей</div><div class="n" style="font-size:24px">0</div></div>
+          </div>
+          <div class="small muted">Среднее ожидание за час: 6 с · ответ целиком: 14 с</div>
+          <div class="alert a-info"><svg class="i"><use href="#i-info"/></svg><div>Фоновые задачи приостановлены, пока пользователи ждут ответ.</div></div>
+        </div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px">
+        <div class="card"><div class="card-h"><h3>Модели в Ollama</h3></div>
+          <table class="tbl"><thead><tr><th>Модель</th><th>Назначение</th><th class="r">В видеопамяти</th><th>Где</th></tr></thead><tbody>
+            <tr><td class="mono">qwen2.5:7b-instruct-q4_K_M</td><td>Ответы, граф, противоречия</td><td class="r num">5,4 ГБ</td><td><span class="badge b-ok">100 % GPU</span></td></tr>
+            <tr><td class="mono">bge-m3</td><td>Векторы для поиска</td><td class="r num">1,2 ГБ</td><td><span class="badge b-ok">100 % GPU</span></td></tr>
+            <tr><td class="mono">qwen3:4b</td><td>Запасная</td><td class="r num">—</td><td><span class="badge b-neutral">Не загружена</span></td></tr>
+          </tbody></table>
+        </div>
+        <div class="card"><div class="card-h"><h3>Сервисы и фоновые задачи</h3></div><div class="card-b" style="padding-top:6px;padding-bottom:6px">
+          <div class="svc"><span class="dot"></span><b class="grow">База данных</b><span class="muted small">18 ГБ · 214 соединений из 300</span></div>
+          <div class="svc"><span class="dot"></span><b class="grow">Ollama</b><span class="muted small">0.40.13</span></div>
+          <div class="svc"><span class="dot w"></span><b class="grow">Worker</b><span class="muted small">на паузе: приоритет пользователей</span></div>
+          <div class="svc"><span class="dot"></span><b class="grow">Документооборот</b><span class="muted small">ответ 0,4 с</span></div>
+          <div class="svc"><span class="dot d"></span><b class="grow">Архив ОТ</b><span class="muted small">не отвечает 6 мин</span></div>
+          <div class="svc"><span class="dot"></span><b class="grow">Фоновые задачи</b><span class="muted small num">1 683 в очереди · 9 с ошибкой</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= СОСТОЯНИЯ ================= -->
+<p class="screen-note" data-for="states"><b>Состояния.</b> Загрузка, ошибка, источник недоступен, нет доступа, ничего не найдено, гостевой режим. Каждое объясняет, что произошло и что делать.</p>
+<div class="screen" id="states">
+  <header class="hdr">
+    <div class="brand"><div class="logo-slot">ЛОГО</div>Поиск по документам</div>
+    <nav class="hnav"><a class="on" href="#chat">Поиск</a><a href="#docs">Документы</a></nav>
+    <div class="hright"><span class="small" style="color:#AEB6B6">Гостевой режим</span><a class="btn btn-on-dark btn-sm" href="#login">Войти</a></div>
+  </header>
+  <div class="states">
+    <div class="state"><div class="state-cap">Загрузка</div><div style="padding:24px;display:grid;gap:14px;align-content:start">
+      <div class="steps"><span class="done"><svg class="i" style="width:15px;height:15px"><use href="#i-check"/></svg>Проверка прав</span><span class="cur"><span class="typing"><i></i><i></i><i></i></span>Поиск по документам</span></div>
+      <div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div><div class="skel" style="width:82%"></div><div class="skel" style="width:40%"></div>
+      <p class="small muted">Если ответ готовится дольше 30 секунд, показываем место в очереди к модели.</p>
+    </div></div>
+    <div class="state"><div class="state-cap">Ошибка</div><div class="state-b"><div><div class="ico" style="background:var(--danger-tint);color:var(--danger)"><svg class="i" style="width:28px;height:28px"><use href="#i-warn"/></svg></div><h3>Не удалось получить ответ</h3><p>Модель не ответила за 2 минуты. Ваш вопрос сохранён в истории.</p><button class="btn btn-primary" style="margin-top:16px"><svg class="i"><use href="#i-refresh"/></svg>Повторить</button></div></div></div>
+    <div class="state"><div class="state-cap">Источник недоступен</div><div class="state-b"><div><div class="ico" style="background:var(--warn-tint);color:var(--warn)"><svg class="i" style="width:28px;height:28px"><use href="#i-plug"/></svg></div><h3>Документы из системы «Архив ОТ» сейчас недоступны</h3><p>Система не смогла проверить ваши права в «Архиве ОТ», поэтому его документы скрыты. Остальные источники работают.</p></div></div></div>
+    <div class="state"><div class="state-cap">Нет доступа</div><div class="state-b"><div><div class="ico" style="background:var(--neutral-tint);color:var(--ink-700)"><svg class="i" style="width:28px;height:28px"><use href="#i-lock"/></svg></div><h3>Нет доступа к документу</h3><p>Источник «Документооборот» не выдал вам права на этот документ. Если он нужен для работы, обратитесь к руководителю подразделения.</p><a class="btn btn-secondary" style="margin-top:16px" href="#docs">К списку документов</a></div></div></div>
+    <div class="state"><div class="state-cap">Ничего не найдено</div><div class="state-b"><div><div class="ico" style="background:var(--surface-2);color:var(--ink-700)"><svg class="i" style="width:28px;height:28px"><use href="#i-empty"/></svg></div><h3>В доступных вам документах ответа нет</h3><p>Система не выдумывает ответ, если его нет в документах. Попробуйте переформулировать вопрос или снять фильтр «Только действующие».</p><button class="btn btn-ghost" style="margin-top:16px">Снять фильтры</button></div></div></div>
+    <div class="state"><div class="state-cap">Гостевой режим и вопрос не по документам</div><div style="padding:24px;display:grid;gap:14px;align-content:start">
+      <div class="alert a-info"><svg class="i"><use href="#i-info"/></svg><div><b>Вы вошли как гость</b>Доступны только общие документы. <a href="#login">Войти</a></div></div>
+      <div class="q" style="align-self:flex-end"><small>Вы</small>Сколько будет 2+2?</div>
+      <div class="a-body" style="font-size:15px">Я отвечаю только на вопросы по документам предприятия. Спросите, например, о порядке допуска к работам или о действующих приказах.</div>
+    </div></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+  // Переключение макетов по #хэшу; по умолчанию — дизайн-система.
+  const ids = [...document.querySelectorAll('.screen')].map(s => s.id);
+  function show() {
+    const id = ids.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'ds';
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id));
+    document.querySelectorAll('.screen-note').forEach(n => n.style.display = n.dataset.for === id ? '' : 'none');
+    document.querySelectorAll('.mock-tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + id ? 'page' : 'false'));
+  }
+  addEventListener('hashchange', () => { show(); scrollTo(0, 0); });
+  show();
+  requestAnimationFrame(() => scrollTo(0, 0));
+</script>
+</body>
+</html>
