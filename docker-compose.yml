@@ -1,0 +1,110 @@
+# Вся система поднимается одной командой: docker compose up -d
+# Настройки — в файле .env (скопируйте .env.example и заполните).
+name: rag
+
+x-backend: &backend
+  image: ${REGISTRY_PREFIX:-rag}/backend:${APP_VERSION:-dev}
+  build: ./backend
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    OLLAMA_URL: http://ollama:11434
+  volumes:
+    - documents:/data/documents
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  proxy:
+    image: ${REGISTRY_PREFIX:-rag}/proxy:${APP_VERSION:-dev}
+    build: ./proxy
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
+
+  # Однократная задача: применяет миграции БД и завершается. app и worker ждут её успеха.
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
+  app:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker.main"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 4g  # OCR сканов (Tesseract) на этапе 2 съест память
+
+  postgres:
+    # PostgreSQL 16 с расширением pgvector
+    image: pgvector/pgvector:0.8.7-pg16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    command: ["postgres", "-c", "shared_buffers=1GB", "-c", "work_mem=32MB", "-c", "maintenance_work_mem=512MB"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+  ollama:
+    # Версию фиксируем: должна работать со старым драйвером NVIDIA 472.12 (см. docs/open-questions.md).
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.13}
+    restart: unless-stopped
+    environment:
+      # Один запрос к LLM за раз: в 8 ГБ VRAM параллельные контексты 7B-модели не помещаются.
+      OLLAMA_NUM_PARALLEL: "1"
+      # LLM + bge-m3 держим в памяти одновременно, чтобы не перезагружать их между запросами.
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_QUEUE: "64"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          # Веса 7B Q4_K_M (~4,7 ГБ) при загрузке проходят через оперативную память.
+          memory: 12g
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  ollama_models:
+    name: rag_ollama_models  # фиксированное имя: офлайн-установщик заливает в него модели
+  documents:

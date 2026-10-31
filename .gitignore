@@ -1,0 +1,23 @@
+# Секреты
+.env
+certs/*
+!certs/README.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Офлайн-пакет
+offline-bundle/
+*.tar
+*.tar.gz
+
+.DS_Store
+Thumbs.db

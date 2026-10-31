@@ -1,0 +1,9 @@
+# Удобства разработки: PostgreSQL и Ollama доступны с хост-машины (только с localhost).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  ollama:
+    ports:
+      - "127.0.0.1:11434:11434"
