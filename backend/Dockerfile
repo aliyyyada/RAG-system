@@ -10,6 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/backend
 
+# Tesseract OCR (Apache-2.0) с русским и английским языками — распознавание сканов.
+# Ставится при сборке образа; на заводе образ приходит готовым в офлайн-пакете.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
@@ -19,7 +25,8 @@ COPY app ./app
 # Фейковый внешний сервис (только разработка; в prod контейнер не запускается)
 COPY fakes ./fakes
 
-RUN useradd --system --uid 10001 --home-dir /srv appuser
+RUN useradd --system --uid 10001 --home-dir /srv appuser \
+    && mkdir -p /data/documents && chown appuser /data/documents
 USER appuser
 
 EXPOSE 8000

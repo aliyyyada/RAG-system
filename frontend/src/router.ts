@@ -14,11 +14,18 @@ declare module 'vue-router' {
 }
 
 // Разделы админки по макету. Те, что появятся на следующих этапах, ведут на заглушку.
+const ADMIN_PAGES: Record<string, () => Promise<unknown>> = {
+  'admin-users': () => import('@/pages/admin/UsersPage.vue'),
+  'admin-roles': () => import('@/pages/admin/RolesPage.vue'),
+  'admin-sources': () => import('@/pages/admin/SourcesPage.vue'),
+  'admin-documents': () => import('@/pages/admin/DocumentsPage.vue'),
+}
+
 export const ADMIN_SECTIONS = [
   { group: 'Доступ', name: 'admin-users', path: 'users', title: 'Пользователи и группы', icon: 'users', permissions: ['admin.users'] },
   { group: 'Доступ', name: 'admin-roles', path: 'roles', title: 'Роли и права', icon: 'shield', permissions: ['admin.roles'] },
-  { group: 'Документы', name: 'admin-sources', path: 'sources', title: 'Источники', icon: 'db', permissions: ['admin.integrations'], stage: 2 },
-  { group: 'Документы', name: 'admin-documents', path: 'documents', title: 'Коллекции и документы', icon: 'doc', permissions: ['admin.integrations'], stage: 2 },
+  { group: 'Документы', name: 'admin-sources', path: 'sources', title: 'Источники', icon: 'db', permissions: ['admin.integrations'] },
+  { group: 'Документы', name: 'admin-documents', path: 'documents', title: 'Коллекции и документы', icon: 'doc', permissions: ['admin.integrations'] },
   { group: 'Система', name: 'admin-audit', path: 'audit', title: 'Журнал аудита', icon: 'list', permissions: ['audit.view'], stage: 7 },
   { group: 'Система', name: 'admin-health', path: 'health', title: 'Состояние системы', icon: 'cpu', permissions: ['admin.integrations'], stage: 7 },
   { group: 'Система', name: 'admin-api-keys', path: 'api-keys', title: 'API-ключи', icon: 'key', permissions: ['admin.integrations'], stage: 7 },
@@ -41,15 +48,22 @@ export const router = createRouter({
         ...ADMIN_SECTIONS.map((s) => ({
           path: s.path,
           name: s.name,
-          component:
-            s.name === 'admin-users'
-              ? () => import('@/pages/admin/UsersPage.vue')
-              : s.name === 'admin-roles'
-                ? () => import('@/pages/admin/RolesPage.vue')
-                : () => import('@/pages/PlaceholderPage.vue'),
+          component: ADMIN_PAGES[s.name] ?? (() => import('@/pages/PlaceholderPage.vue')),
           props: 'stage' in s ? { title: s.title, stage: s.stage, embedded: true } : undefined,
           meta: { requiresAuth: true, permissions: [...s.permissions], title: s.title },
         })),
+        {
+          path: 'sources/:id(\\d+)',
+          name: 'admin-source',
+          component: () => import('@/pages/admin/SourcePage.vue'),
+          meta: { requiresAuth: true, permissions: ['admin.integrations'], title: 'Источник' },
+        },
+        {
+          path: 'documents/:id(\\d+)',
+          name: 'admin-document',
+          component: () => import('@/pages/admin/DocumentPage.vue'),
+          meta: { requiresAuth: true, permissions: ['admin.integrations'], title: 'Документ' },
+        },
       ],
     },
     { path: '/forbidden', name: 'forbidden', component: () => import('@/pages/ForbiddenPage.vue'), meta: { title: 'Нет доступа' } },

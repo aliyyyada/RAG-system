@@ -1,4 +1,4 @@
-"""ORM-модели: очередь фоновых задач (этап 0), пользователи, роли, группы и сессии (этап 1)."""
+"""ORM-модели: очередь задач (этап 0), пользователи и RBAC (этап 1), документы (этап 2)."""
 
 import uuid
 from datetime import datetime
@@ -9,6 +9,8 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -19,7 +21,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -49,6 +51,9 @@ class Job(Base):
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     locked_by: Mapped[str | None] = mapped_column(String(128))
+    # Ключ от повторов: пока задача с таким ключом стоит в очереди, вторая не ставится.
+    # Пример: «document:42» — синхронизация дважды увидела изменённый документ 42.
+    dedupe_key: Mapped[str | None] = mapped_column(String(128))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -60,6 +65,12 @@ class Job(Base):
             text("priority DESC"),
             text("id"),
             postgresql_where=text("status = 'queued'"),
+        ),
+        Index(
+            "ux_jobs_dedupe_queued",
+            "dedupe_key",
+            unique=True,
+            postgresql_where=text("status = 'queued' AND dedupe_key IS NOT NULL"),
         ),
     )
 
@@ -256,3 +267,260 @@ class AuditLog(Base):
     target_id: Mapped[str | None] = mapped_column(String(64))
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     ip: Mapped[str | None] = mapped_column(String(64))
+
+
+# ---------------------------------------------------------------------------
+# Этап 2: источники, реестр документов, файлы, фрагменты, синхронизация
+# ---------------------------------------------------------------------------
+
+
+class Source(Base):
+    """Подключённая внешняя система с документами (например, «Документооборот»).
+
+    Как с ней говорить, решает адаптер (`adapter`, см. app/sources). Настройки меняются
+    в админке, секреты (если появятся) — только в .env.
+    """
+
+    __tablename__ = "sources"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # Короткий код латиницей: docflow. Используется в API для самого источника.
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    adapter: Mapped[str] = mapped_column(String(32), server_default=text("'http_json'"))
+    base_url: Mapped[str] = mapped_column(String(500))
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    sync_interval_minutes: Mapped[int] = mapped_column(Integer, server_default=text("15"))
+    # Перекрытие окна: берём изменения с (последняя дата изменения − N минут), чтобы не
+    # потерять документ, который источник записал «задним числом» во время прошлой синхронизации.
+    overlap_minutes: Mapped[int] = mapped_column(Integer, server_default=text("60"))
+    # Час ночной сверки по местному времени (APP_TIMEZONE).
+    reconcile_hour: Mapped[int] = mapped_column(Integer, server_default=text("2"))
+    # SHA-256 токена, с которым источник сам обращается к нашему API (сам токен не храним).
+    callback_token_hash: Mapped[str | None] = mapped_column(String(64))
+
+    sync_cursor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_reconcile_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Сколько живых документов источник отдал при последней полной сверке.
+    source_total: Mapped[int | None] = mapped_column(Integer)
+    # Ответил ли источник при последнем обращении. Не ответил — показываем предупреждение.
+    available: Mapped[bool | None] = mapped_column(Boolean)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("code ~ '^[a-z][a-z0-9_-]{1,31}$'", name="ck_sources_code"),
+        CheckConstraint("sync_interval_minutes >= 1", name="ck_sources_interval"),
+        CheckConstraint("reconcile_hour BETWEEN 0 AND 23", name="ck_sources_reconcile_hour"),
+    )
+
+
+class Collection(Base):
+    """Коллекция документов: «весь источник X», «Ручные загрузки» или тематическая."""
+
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    # source — все документы одного источника; manual — ручные загрузки; topic — тематическая.
+    kind: Mapped[str] = mapped_column(String(16))
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), unique=True
+    )
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('source', 'manual', 'topic')", name="ck_collections_kind"),
+    )
+
+
+DOC_STATUSES = ("queued", "processing", "ready", "error")
+
+
+class Document(Base):
+    """Документ в нашем реестре.
+
+    Пример: приказ № 112 из «Документооборота» — source_id=1, external_id='7c1d…e5a4',
+    version = дата изменения в источнике. Если источник поменял документ, version растёт,
+    документ встаёт в очередь (status=queued) и после обработки indexed_version = version.
+    Пока идёт переобработка, в поиске остаются старые фрагменты: документ не пропадает.
+    """
+
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id"))
+    # guid документа в источнике; у ручных загрузок NULL.
+    external_id: Mapped[str | None] = mapped_column(String(128))
+    version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    indexed_version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    number: Mapped[str | None] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    doc_type: Mapped[str | None] = mapped_column(String(100))
+    topic: Mapped[str | None] = mapped_column(String(200))
+    doc_date: Mapped[Any | None] = mapped_column(Date)
+    # Шапка как пришла из источника (все поля, в том числе неизвестные нам).
+    header: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    # Табличные части: [{"name": "Ознакомлены", "rows": 46}]
+    parts_summary: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    # Доступен всем, в том числе без входа (п. 6 ТЗ). Для источника — из источника.
+    is_common: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Администратор исключил из поиска (кнопка в карточке документа).
+    is_excluded: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Мягкое удаление: документ пропадает из поиска, но запись и история остаются.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # deleted_in_source | missing_in_source (ночная сверка не нашла его у источника)
+    deleted_reason: Mapped[str | None] = mapped_column(String(32))
+
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'queued'"))
+    # fetch | completeness | parse | ocr | store
+    error_stage: Mapped[str | None] = mapped_column(String(16))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    status_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    chunk_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'processing', 'ready', 'error')", name="ck_documents_status"
+        ),
+        CheckConstraint(
+            "(source_id IS NULL) = (external_id IS NULL)", name="ck_documents_source_ref"
+        ),
+        Index(
+            "ux_documents_source_external",
+            "source_id",
+            "external_id",
+            unique=True,
+            postgresql_where=text("source_id IS NOT NULL"),
+        ),
+        Index("ix_documents_status", "source_id", "status"),
+        Index("ix_documents_collection", "collection_id"),
+    )
+
+
+class DocumentFile(Base):
+    """Файл документа. Сам файл лежит на диске: /data/documents/ab/abcdef… (SHA-256)."""
+
+    __tablename__ = "document_files"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    ord: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    source_file_id: Mapped[str | None] = mapped_column(String(128))
+    name: Mapped[str] = mapped_column(String(500))
+    mime: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    pages: Mapped[int | None] = mapped_column(Integer)
+    # Сколько страниц пришлось распознавать (скан без текстового слоя).
+    ocr_pages: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Предупреждения разбора: «стр. 4: распознано мало текста» и т. п.
+    warnings: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # Распознанный текст целиком (вкладка «Распознанный текст» в карточке документа).
+    text: Mapped[str] = mapped_column(Text, server_default="")
+
+
+class Chunk(Base):
+    """Фрагмент документа — единица поиска.
+
+    Хранит, откуда он: файл, страницы, раздел («4. Порядок допуска») и пункт («4.2»),
+    чтобы ответ мог сослаться на документ и открыть его на нужном месте.
+    Таблица в фрагменте всегда целыми строками и с шапкой таблицы.
+    """
+
+    __tablename__ = "chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    file_id: Mapped[int | None] = mapped_column(ForeignKey("document_files.id", ondelete="CASCADE"))
+    ord: Mapped[int] = mapped_column(Integer)
+    # header — собран из шапки и табличных частей источника; text; table
+    kind: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    section: Mapped[str | None] = mapped_column(Text)
+    point: Mapped[str | None] = mapped_column(String(32))
+    page_from: Mapped[int | None] = mapped_column(Integer)
+    page_to: Mapped[int | None] = mapped_column(Integer)
+    token_estimate: Mapped[int] = mapped_column(Integer)
+    # Полнотекстовый поиск с русской морфологией («приказы» найдёт «приказ»). Этап 4.
+    tsv: Mapped[Any] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('russian', text)", persisted=True)
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('header', 'text', 'table')", name="ck_chunks_kind"),
+        Index("ux_chunks_document_ord", "document_id", "ord", unique=True),
+        Index("ix_chunks_tsv", "tsv", postgresql_using="gin"),
+    )
+
+
+class DocumentEvent(Base):
+    """История документа: получен, обработан, ошибка, удалён в источнике, повтор…"""
+
+    __tablename__ = "document_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    event: Mapped[str] = mapped_column(String(32))
+    version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class StagingDocument(Base):
+    """Промежуточная таблица: документ ровно в том виде, как его отдал источник.
+
+    Сначала всё пишется сюда и проверяется на полноту (число строк табличных частей,
+    размер файлов, файл открывается). Только после проверки данные попадают в реестр.
+    Если проверка не прошла, строка остаётся здесь с причиной — видно, что именно пришло.
+    """
+
+    __tablename__ = "staging_documents"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    external_id: Mapped[str] = mapped_column(String(128))
+    version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    header: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    parts: Mapped[list[Any]] = mapped_column(JSONB)
+    files: Mapped[list[Any]] = mapped_column(JSONB)
+    # received | failed
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'received'"))
+    check_errors: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    __table_args__ = (Index("ux_staging_source_external", "source_id", "external_id", unique=True),)
+
+
+class SyncRun(Base):
+    """Один запуск синхронизации (инкрементальной или ночной сверки) — для отчёта."""
+
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True)
+    # incremental | reconcile
+    kind: Mapped[str] = mapped_column(String(16))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # running | ok | error
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'running'"))
+    stats: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)

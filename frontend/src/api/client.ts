@@ -89,7 +89,7 @@ export function refreshSession(): Promise<TokenResponse | null> {
 
 export async function api<T>(
   path: string,
-  init: { method?: string; body?: unknown; query?: Record<string, unknown> } = {},
+  init: { method?: string; body?: unknown; form?: FormData; query?: Record<string, unknown> } = {},
 ): Promise<T> {
   const url = new URL('/api' + path, window.location.origin)
   for (const [k, v] of Object.entries(init.query ?? {})) {
@@ -100,10 +100,12 @@ export async function api<T>(
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (init.body !== undefined) headers['Content-Type'] = 'application/json'
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+    // FormData (загрузка файла): Content-Type с границей частей браузер ставит сам.
+    const body = init.form ?? (init.body === undefined ? undefined : JSON.stringify(init.body))
     return fetch(url, {
-      method: init.method ?? 'GET',
+      method: init.method ?? (init.form ? 'POST' : 'GET'),
       headers,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      body,
       credentials: 'same-origin',
     })
   }

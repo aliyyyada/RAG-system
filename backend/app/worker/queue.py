@@ -6,6 +6,7 @@
 вернёт «зависшие» задачи в очередь, и индексация продолжится с того же места.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,12 +26,40 @@ class ClaimedJob:
 
 
 async def enqueue(
-    session: AsyncSession, kind: str, payload: dict[str, Any] | None = None, priority: int = 0
-) -> int:
-    job = Job(kind=kind, payload=payload or {}, priority=priority)
-    session.add(job)
-    await session.flush()
-    return job.id
+    session: AsyncSession,
+    kind: str,
+    payload: dict[str, Any] | None = None,
+    priority: int = 0,
+    *,
+    dedupe_key: str | None = None,
+    max_attempts: int = 3,
+) -> int | None:
+    """Ставит задачу. С dedupe_key вторая такая же задача в очереди не появится (вернёт None)."""
+    if dedupe_key is None:
+        job = Job(kind=kind, payload=payload or {}, priority=priority, max_attempts=max_attempts)
+        session.add(job)
+        await session.flush()
+        return job.id
+    row = await session.execute(
+        text(
+            """
+            INSERT INTO jobs (kind, payload, priority, dedupe_key, max_attempts)
+            VALUES (:kind, CAST(:payload AS jsonb), :priority, :key, :max_attempts)
+            ON CONFLICT (dedupe_key) WHERE status = 'queued' AND dedupe_key IS NOT NULL
+            DO UPDATE SET priority = GREATEST(jobs.priority, EXCLUDED.priority)
+            RETURNING id, (xmax = 0) AS inserted
+            """
+        ),
+        {
+            "kind": kind,
+            "payload": json.dumps(payload or {}),
+            "priority": priority,
+            "key": dedupe_key,
+            "max_attempts": max_attempts,
+        },
+    )
+    job_id, inserted = row.one()
+    return job_id if inserted else None
 
 
 _DEQUEUE_SQL = text(

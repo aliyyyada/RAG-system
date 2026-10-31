@@ -38,6 +38,14 @@
 | httpx | BSD-3 | |
 | argon2-cffi | MIT | Хэши паролей локальных и тестовых учёток |
 | PyJWT | MIT | Access-токены сессии |
+| pdfplumber, pdfminer.six | MIT | Текст и таблицы из PDF (этап 2). PyMuPDF не берём: AGPL-3.0. |
+| pypdfium2 (PDFium) | Apache-2.0 / BSD-3 | Отрисовка страницы скана в картинку для OCR |
+| Pillow | MIT-CMU (HPND, permissive) | Картинки для OCR |
+| python-docx, lxml | MIT / BSD-3 | Разбор DOCX |
+| cryptography, charset-normalizer | Apache-2.0 или BSD / MIT | Зависимости pdfminer.six (зашифрованные PDF, кодировки) |
+| python-multipart | Apache-2.0 | Приём файла при ручной загрузке |
+| tzdata | Apache-2.0 | Часовой пояс завода для ночной сверки |
+| reportlab | BSD | Только генерация тестовых PDF (`fakes/make_fixtures.py`), в образ не входит |
 | pytest, pytest-asyncio | MIT / Apache-2.0 | только разработка |
 | Ruff | MIT | только разработка |
 
