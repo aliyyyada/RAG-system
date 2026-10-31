@@ -109,3 +109,156 @@ export interface Role {
   users_count: number
   groups_count: number
 }
+
+// ---------------------------------------------------------------------------
+// Этап 2: источники, документы, фрагменты
+// ---------------------------------------------------------------------------
+
+export type DocStatus = 'queued' | 'processing' | 'ready' | 'error'
+
+export interface SyncRun {
+  id: number
+  kind: 'incremental' | 'reconcile'
+  status: 'running' | 'ok' | 'error'
+  started_at: string
+  finished_at: string | null
+  stats: Record<string, number>
+  error: string | null
+}
+
+export interface SourceReport {
+  at_source: number | null
+  known: number
+  ready: number
+  queued: number
+  processing: number
+  error: number
+  deleted: number
+  excluded: number
+  rate_per_minute: number
+  eta_minutes: number | null
+  progress: number
+  errors_by_stage: Record<string, number>
+  runs: SyncRun[]
+}
+
+export interface Source {
+  id: number
+  code: string
+  name: string
+  adapter: string
+  base_url: string
+  enabled: boolean
+  sync_interval_minutes: number
+  overlap_minutes: number
+  reconcile_hour: number
+  available: boolean | null
+  last_error: string | null
+  last_sync_at: string | null
+  last_reconcile_at: string | null
+  last_checked_at: string | null
+  created_at: string
+  has_callback_token: boolean
+  collection_id: number | null
+  report: SourceReport
+}
+
+export interface SourceSettings {
+  name: string
+  base_url: string
+  enabled: boolean
+  sync_interval_minutes: number
+  overlap_minutes: number
+  reconcile_hour: number
+}
+
+export interface DocumentRow {
+  id: number
+  caption: string
+  number: string | null
+  title: string
+  doc_type: string | null
+  doc_date: string | null
+  source_id: number | null
+  source_name: string | null
+  collection_id: number
+  external_id: string | null
+  version: string | null
+  indexed_version: string | null
+  status: DocStatus
+  error_stage: string | null
+  error_stage_title: string | null
+  error_message: string | null
+  attempts: number
+  is_common: boolean
+  is_excluded: boolean
+  deleted_at: string | null
+  deleted_reason: string | null
+  chunk_count: number
+  status_changed_at: string
+}
+
+export interface DocumentPage {
+  items: DocumentRow[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface DocFile {
+  id: number
+  name: string
+  mime: string
+  size: number
+  sha256: string
+  pages: number | null
+  ocr_pages: number
+  warnings: string[]
+}
+
+export interface DocEvent {
+  id: number
+  created_at: string
+  event: string
+  version: string | null
+  details: Record<string, unknown>
+}
+
+export interface DocumentCard extends DocumentRow {
+  topic: string | null
+  header: Record<string, unknown>
+  parts_summary: { name: string; rows: number; declared: number | null }[]
+  files: DocFile[]
+  events: DocEvent[]
+  collection_name: string
+  manual: boolean
+}
+
+export interface ChunkItem {
+  id: number
+  ord: number
+  kind: 'header' | 'text' | 'table'
+  text: string
+  section: string | null
+  point: string | null
+  page_from: number | null
+  page_to: number | null
+  token_estimate: number
+  file_id: number | null
+}
+
+export interface ChunkPage {
+  items: ChunkItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface CollectionInfo {
+  id: number
+  name: string
+  kind: 'source' | 'manual' | 'topic'
+  source_id: number | null
+  documents: number
+  errors: number
+}

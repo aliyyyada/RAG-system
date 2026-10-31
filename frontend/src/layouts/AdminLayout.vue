@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import { ADMIN_SECTIONS } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
+
+// Раздел подсвечен и на вложенных страницах: «Источники» — и на карточке источника.
+const isOn = (path: string) => route.path === `/admin/${path}` || route.path.startsWith(`/admin/${path}/`)
 
 // Левое меню админки по макету; пункт виден, только если есть право на раздел.
 const groups = computed(() => {
@@ -28,7 +33,8 @@ const groups = computed(() => {
           v-for="s in g.items"
           :key="s.name"
           :to="{ name: s.name }"
-          active-class="on"
+          :class="{ on: isOn(s.path) }"
+          :aria-current="isOn(s.path) ? 'page' : undefined"
         >
           <AppIcon :name="s.icon" />{{ s.title }}
         </RouterLink>

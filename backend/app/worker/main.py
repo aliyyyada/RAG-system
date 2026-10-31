@@ -1,7 +1,8 @@
 """Worker: выполняет фоновые задачи из очереди в PostgreSQL (контейнер worker).
 
-Обработчики задач (синхронизация, парсинг, векторизация, граф, противоречия)
-появятся на следующих этапах и регистрируются в HANDLERS.
+Обработчики регистрируются в HANDLERS. Этап 2: синхронизация с источником, ночная сверка,
+обработка документа. Векторизация, граф и противоречия добавятся на следующих этапах.
+Раз в SCHEDULE_EVERY_SECONDS worker сам ставит синхронизации, которым пора (планировщик).
 """
 
 import asyncio
@@ -9,23 +10,35 @@ import logging
 import os
 import signal
 import socket
+import time
 from collections.abc import Awaitable, Callable
-from typing import Any
 
-from app.config import get_settings
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.config import Settings, get_settings
 from app.db import dispose_engine, get_sessionmaker
+from app.ingest import pipeline, sync
+from app.ingest.errors import IngestError
 from app.worker import queue
+from app.worker.queue import ClaimedJob
 
 log = logging.getLogger("worker")
 
-Handler = Callable[[dict[str, Any]], Awaitable[None]]
+Handler = Callable[[ClaimedJob, Settings, async_sessionmaker[AsyncSession]], Awaitable[None]]
+
+SCHEDULE_EVERY_SECONDS = 30
 
 
-async def _noop(payload: dict[str, Any]) -> None:
-    log.info("noop job: %s", payload)
+async def _noop(job: ClaimedJob, settings: Settings, sm: async_sessionmaker[AsyncSession]) -> None:
+    log.info("noop job: %s", job.payload)
 
 
-HANDLERS: dict[str, Handler] = {"noop": _noop}
+HANDLERS: dict[str, Handler] = {
+    "noop": _noop,
+    pipeline.JOB_KIND: pipeline.process_document,
+    sync.SYNC_JOB: sync.handle_sync,
+    sync.RECONCILE_JOB: sync.handle_reconcile,
+}
 
 
 async def run_once(worker_id: str) -> bool:
@@ -40,11 +53,16 @@ async def run_once(worker_id: str) -> bool:
     try:
         if handler is None:
             raise LookupError(f"Нет обработчика для задачи {job.kind!r}")
-        await handler(job.payload)
+        await handler(job, get_settings(), sm)
     except Exception as exc:  # noqa: BLE001 — любую ошибку пишем в задачу
-        log.exception("job %s (%s) failed", job.id, job.kind)
+        if isinstance(exc, IngestError):
+            # Ожидаемая ошибка данных (битый файл, неполная выгрузка): без трассировки.
+            log.warning("job %s (%s): %s", job.id, job.kind, exc)
+        else:
+            log.exception("job %s (%s) failed", job.id, job.kind)
+        delay = get_settings().document_retry_delay_seconds
         async with sm() as session, session.begin():
-            await queue.mark_failed(session, job.id, f"{type(exc).__name__}: {exc}")
+            await queue.mark_failed(session, job.id, f"{type(exc).__name__}: {exc}", delay)
     else:
         async with sm() as session, session.begin():
             await queue.mark_done(session, job.id)
@@ -64,7 +82,17 @@ async def main() -> None:
         n = await queue.requeue_stale(session, settings.worker_stale_after_seconds)
     log.info("worker %s started, requeued %d stale jobs", worker_id, n)
 
+    next_schedule = 0.0
     while not stop.is_set():
+        if settings.scheduler_enabled and time.monotonic() >= next_schedule:
+            next_schedule = time.monotonic() + SCHEDULE_EVERY_SECONDS
+            try:
+                async with get_sessionmaker()() as session, session.begin():
+                    planned = await sync.schedule_tick(session, settings)
+                if planned:
+                    log.info("scheduled: %s", planned)
+            except Exception:  # noqa: BLE001 — планировщик не должен ронять worker
+                log.exception("scheduler error")
         try:
             busy = await run_once(worker_id)
         except Exception:  # noqa: BLE001 — например, БД ещё не поднялась

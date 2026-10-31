@@ -6,6 +6,11 @@
     docker compose exec app python -m app.cli create-local-user admin \\
         --name "Аварийный администратор" --admin --emergency
     docker compose exec app python -m app.cli seed-test-users        # только разработка
+    docker compose exec app python -m app.cli add-source docflow --name "Документооборот" \
+        --url https://docflow.zavod.local/api/rag
+    docker compose exec app python -m app.cli seed-fake-source       # только разработка
+    docker compose exec app python -m app.cli source-token docflow   # токен для API источника
+    docker compose exec app python -m app.cli sync docflow [--reconcile]
 
 create-admin — первый администратор (без него в админку попасть нельзя): выдаёт роль
 «Администратор» человеку с этим табельным номером. Если человек ещё не входил,
@@ -30,7 +35,7 @@ from app.auth.rbac import BUILTIN_ADMIN, get_builtin_role
 from app.auth.service import write_audit
 from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
-from app.models import Group, Role, RolePermission, User
+from app.models import Group, Role, RolePermission, Source, User
 
 # Пароль всех тестовых учёток. Работает только при ENABLE_TEST_USERS=true (в prod запрещено).
 TEST_PASSWORD = "test-password-1"  # noqa: S105 — тестовые учётки разработки
@@ -168,6 +173,70 @@ async def seed_test_users() -> str:
     return f"Готово: тестовых учёток создано {created}, пароль у всех: {TEST_PASSWORD}"
 
 
+# Фейковый источник документов (контейнер fake-service), только разработка.
+FAKE_SOURCE_URL = "https://fake-service:8443/source"
+
+
+async def add_source(code: str, name: str, url: str) -> str:
+    from app.ingest.service import ServiceError, create_source
+
+    async with get_sessionmaker()() as session:
+        try:
+            src = await create_source(session, code=code, name=name, base_url=url)
+        except ServiceError as exc:
+            raise SystemExit(exc.message) from None
+        await write_audit(
+            session,
+            "cli.add_source",
+            target_type="source",
+            target_id=src.id,
+            details={"code": code},
+        )
+        await session.commit()
+    return f"Готово: источник {code} подключён, первая синхронизация начнётся в течение минуты"
+
+
+async def seed_fake_source(url: str) -> str:
+    if not get_settings().enable_test_users:
+        raise SystemExit("Фейковый источник только для разработки (ENABLE_TEST_USERS=true)")
+    async with get_sessionmaker()() as session:
+        if await session.scalar(select(Source).where(Source.code == "docflow")):
+            return "Источник docflow уже подключён"
+    return await add_source("docflow", "Документооборот (тестовый)", url)
+
+
+async def _source_by_code(session: AsyncSession, code: str) -> Source:
+    src = await session.scalar(select(Source).where(Source.code == code))
+    if src is None:
+        raise SystemExit(f"Нет источника с кодом {code}")
+    return src
+
+
+async def source_token(code: str) -> str:
+    from app.ingest.service import issue_callback_token
+
+    async with get_sessionmaker()() as session:
+        src = await _source_by_code(session, code)
+        token = await issue_callback_token(session, src)
+        await write_audit(session, "cli.source_token", target_type="source", target_id=src.id)
+        await session.commit()
+    return (
+        f"Токен для API источника {code} (показывается один раз, предыдущий больше не действует):"
+        f"\n{token}"
+    )
+
+
+async def sync_source(code: str, reconcile: bool) -> str:
+    from app.ingest.service import request_sync
+
+    async with get_sessionmaker()() as session:
+        src = await _source_by_code(session, code)
+        queued = await request_sync(session, src, reconcile=reconcile)
+        await session.commit()
+    what = "Ночная сверка" if reconcile else "Синхронизация"
+    return f"{what} поставлена в очередь" if queued else f"{what} уже стоит в очереди"
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -188,6 +257,21 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("seed-test-users", help="Создать тестовые учётки (только разработка)")
 
+    p = sub.add_parser("add-source", help="Подключить источник документов")
+    p.add_argument("code", help="Короткий код латиницей, например docflow")
+    p.add_argument("--name", required=True, help="Название, например «Документооборот»")
+    p.add_argument("--url", required=True, help="Адрес API источника (https://…)")
+
+    p = sub.add_parser("seed-fake-source", help="Подключить фейковый источник (разработка)")
+    p.add_argument("--url", default=FAKE_SOURCE_URL)
+
+    p = sub.add_parser("source-token", help="Выпустить токен для API «что у вас загружено»")
+    p.add_argument("code")
+
+    p = sub.add_parser("sync", help="Запустить синхронизацию источника сейчас")
+    p.add_argument("code")
+    p.add_argument("--reconcile", action="store_true", help="Полная сверка вместо инкремента")
+
     args = parser.parse_args(argv)
 
     async def run() -> str:
@@ -202,6 +286,16 @@ def main(argv: list[str] | None = None) -> None:
                 return await create_local_user(
                     args.personnel_number.strip(), args.name, args.admin, args.emergency, password
                 )
+            if args.cmd == "add-source":
+                if not args.url.startswith("https://"):
+                    raise SystemExit("Адрес источника должен начинаться с https://")
+                return await add_source(args.code, args.name, args.url)
+            if args.cmd == "seed-fake-source":
+                return await seed_fake_source(args.url)
+            if args.cmd == "source-token":
+                return await source_token(args.code)
+            if args.cmd == "sync":
+                return await sync_source(args.code, args.reconcile)
             return await seed_test_users()
         finally:
             await dispose_engine()

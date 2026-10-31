@@ -1,8 +1,8 @@
 """Фейковый внешний сервис завода — только для разработки и тестов.
 
 Изображает систему, где уже заведены сотрудники: отвечает на проверку логина и пароля
-(тот же формат, что ждёт ExternalCheckProvider). На этапе 2 сюда добавятся тестовые
-документы, на этапе 3 — списки доступных id документов.
+(тот же формат, что ждёт ExternalCheckProvider) и отдаёт тестовые документы по протоколу
+источника (/source/..., см. fakes/fake_source.py). На этапе 3 добавятся списки доступных id.
 
 Запуск в docker compose — сервис `fake-service` (профиль dev), по HTTPS с dev-сертификатом.
 В prod не запускается (ENABLE_TEST_USERS=false и профиль dev выключен).
@@ -13,6 +13,8 @@ import os
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+from fakes.fake_source import router as source_router
 
 # Пароль у всех сотрудников фейкового сервиса одинаковый, его можно переопределить.
 FAKE_PASSWORD = os.environ.get("FAKE_SERVICE_PASSWORD", "demo-password-1")
@@ -55,6 +57,7 @@ class CheckRequest(BaseModel):
 
 
 app = FastAPI(title="Фейковый внешний сервис (разработка)", docs_url="/docs")
+app.include_router(source_router)
 
 
 @app.get("/health")

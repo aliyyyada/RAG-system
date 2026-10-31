@@ -65,6 +65,36 @@ class Settings(BaseSettings):
     # Гостевой режим: без входа доступны поиск и общие документы.
     guest_mode_enabled: bool = True
 
+    # ---------- Документы и синхронизация (этап 2) ----------
+    # Папка с файлами документов (том Docker). Имя файла = SHA-256 содержимого.
+    documents_dir: str = "/data/documents"
+    # Часовой пояс завода: в нём считается час ночной сверки и показываются даты.
+    app_timezone: str = "Europe/Moscow"
+    # TLS к источникам документов. Если не задано — тот же CA, что у сервиса проверки пароля.
+    source_ca_file: str | None = None
+    source_client_cert: str | None = None
+    source_client_key: str | None = None
+    source_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    # Файл больше этого размера не скачиваем (защита диска от ошибки источника).
+    source_file_max_mb: int = Field(default=200, ge=1)
+    # Ручная загрузка через интерфейс.
+    manual_upload_max_mb: int = Field(default=50, ge=1)
+    # OCR сканов (Tesseract). Страница считается сканом, если в текстовом слое меньше
+    # ocr_min_chars символов.
+    ocr_languages: str = "rus+eng"
+    ocr_dpi: int = Field(default=300, ge=100, le=600)
+    ocr_min_chars: int = Field(default=30, ge=0)
+    ocr_timeout_seconds: int = Field(default=180, ge=10)
+    # Размер фрагмента: целимся в chunk_target_chars, не больше chunk_max_chars
+    # (~ 400 и ~ 650 токенов bge-m3). Таблицы режем только по строкам.
+    chunk_target_chars: int = Field(default=1500, ge=200)
+    chunk_max_chars: int = Field(default=2500, ge=400)
+    # Сколько раз пробуем обработать документ, прежде чем показать «ошибка».
+    document_max_attempts: int = Field(default=3, ge=1, le=20)
+    document_retry_delay_seconds: int = Field(default=60, ge=0)
+    # Планировщик в worker: инкрементальная синхронизация и ночная сверка по расписанию.
+    scheduler_enabled: bool = True
+
     worker_poll_seconds: float = 2.0
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.

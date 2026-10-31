@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import admin, auth, health
+from app.api import admin, auth, health, integration, manual_upload, sources
 from app.config import get_settings
 from app.db import dispose_engine
 
@@ -29,6 +29,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(sources.router)
+    app.include_router(manual_upload.router)
+    app.include_router(integration.router)
     return app
 
 
