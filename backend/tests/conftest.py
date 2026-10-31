@@ -71,3 +71,56 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
 async def clean_jobs(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.execute(text("TRUNCATE jobs RESTART IDENTITY"))
+
+
+# ---------------------------------------------------------------------------
+# Этап 1: приложение с фейковым внешним сервисом и чистые таблицы доступа
+# ---------------------------------------------------------------------------
+
+RESET_AUTH_SQL = """
+TRUNCATE users, groups, auth_sessions, login_lockouts, login_events, audit_log,
+         user_roles, group_roles, group_members RESTART IDENTITY CASCADE;
+DELETE FROM roles WHERE builtin_key IS NULL;
+DELETE FROM role_permissions;
+INSERT INTO role_permissions (role_id, permission)
+SELECT id, 'search.common' FROM roles WHERE builtin_key IN ('guest', 'user')
+UNION ALL SELECT id, 'documents.view' FROM roles WHERE builtin_key = 'user';
+"""
+
+
+@pytest.fixture
+async def clean_auth(engine: AsyncEngine) -> None:
+    async with engine.begin() as conn:
+        for stmt in RESET_AUTH_SQL.split(";"):
+            if stmt.strip():
+                await conn.execute(text(stmt))
+
+
+@pytest.fixture
+def fake_service_transport():  # type: ignore[no-untyped-def]
+    """Фейковый внешний сервис, вызываемый настоящим адаптером ExternalCheckProvider в памяти."""
+    from httpx import ASGITransport
+
+    from fakes.fake_service import app as fake_app
+
+    return ASGITransport(app=fake_app)
+
+
+@pytest.fixture
+async def client(database_url: str, clean_auth: None, fake_service_transport):  # type: ignore[no-untyped-def]
+    """HTTP-клиент к приложению. base_url https — иначе Secure-cookie клиент не сохранит."""
+    from httpx import ASGITransport as _T
+    from httpx import AsyncClient
+
+    from app.auth.providers import get_auth_provider
+    from app.auth.providers.external_check import ExternalCheckProvider
+    from app.config import get_settings
+    from app.main import create_app
+
+    app = create_app()
+    app.dependency_overrides[get_auth_provider] = lambda: ExternalCheckProvider(
+        get_settings(), transport=fake_service_transport
+    )
+    async with AsyncClient(transport=_T(app=app), base_url="https://testserver") as c:
+        c.app = app  # type: ignore[attr-defined]
+        yield c

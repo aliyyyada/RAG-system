@@ -16,6 +16,8 @@ RUN pip install -r requirements.txt
 COPY alembic.ini pyproject.toml ./
 COPY migrations ./migrations
 COPY app ./app
+# Фейковый внешний сервис (только разработка; в prod контейнер не запускается)
+COPY fakes ./fakes
 
 RUN useradd --system --uid 10001 --home-dir /srv appuser
 USER appuser
