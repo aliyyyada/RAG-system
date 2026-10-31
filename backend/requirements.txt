@@ -1,0 +1,11 @@
+# Зафиксированные версии: офлайн-сборка должна быть воспроизводимой.
+# Лицензии: см. docs/licenses.md (только MIT / BSD / Apache-2.0).
+fastapi==0.162.0
+starlette==1.10.0
+uvicorn[standard]==0.54.0
+SQLAlchemy[asyncio]==2.1.6
+asyncpg==0.32.0
+alembic==1.20.1
+pydantic==2.14.2
+pydantic-settings==2.16.2
+httpx==0.28.1

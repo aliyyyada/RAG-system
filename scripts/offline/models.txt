@@ -1,0 +1,4 @@
+# Модели Ollama, которые попадают в офлайн-пакет. Лицензии: docs/licenses.md
+qwen2.5:7b-instruct-q4_K_M
+qwen3:4b
+bge-m3

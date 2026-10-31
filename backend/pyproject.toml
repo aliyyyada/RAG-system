@@ -1,0 +1,23 @@
+[project]
+name = "rag-backend"
+version = "0.1.0"
+description = "Корпоративный RAG-поиск по документам предприятия: backend и worker"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["S101"]  # assert в тестах
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*" = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+markers = ["db: тест требует PostgreSQL (TEST_DATABASE_URL)"]

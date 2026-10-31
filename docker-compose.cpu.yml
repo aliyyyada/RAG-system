@@ -1,0 +1,6 @@
+# Для разработки на машине без видеокарты NVIDIA (и для CI):
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# Ollama запустится на CPU — медленно, но достаточно для проверки каркаса.
+services:
+  ollama:
+    deploy: !reset {}
