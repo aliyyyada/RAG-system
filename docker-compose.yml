@@ -12,6 +12,9 @@ x-backend: &backend
     OLLAMA_URL: http://ollama:11434
   volumes:
     - documents:/data/documents
+    # Сертификаты: CA внешнего сервиса проверки пароля (EXTERNAL_AUTH_CA_FILE)
+    # и, если нужен mTLS, клиентский сертификат. Только чтение.
+    - ./certs:/srv/certs:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -19,7 +22,10 @@ x-backend: &backend
 services:
   proxy:
     image: ${REGISTRY_PREFIX:-rag}/proxy:${APP_VERSION:-dev}
-    build: ./proxy
+    # Контекст — корень репозитория: в образ собирается фронтенд (frontend/ + design/tokens.css).
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
@@ -57,6 +63,24 @@ services:
       resources:
         limits:
           memory: 4g  # OCR сканов (Tesseract) на этапе 2 съест память
+
+  # Фейковый внешний сервис завода: проверка пароля тестовых сотрудников (позже — документы).
+  # Только разработка: запускается, если в .env есть COMPOSE_PROFILES=dev. В prod строку удалить.
+  fake-service:
+    <<: *backend
+    profiles: ["dev"]
+    command:
+      - uvicorn
+      - fakes.fake_service:app
+      - --host=0.0.0.0
+      - --port=8443
+      - --ssl-certfile=/srv/certs/server.crt
+      - --ssl-keyfile=/srv/certs/server.key
+    # Ключ dev-сертификата доступен на чтение только владельцу; сервис учебный, в prod не запускается.
+    user: "0"
+    healthcheck:
+      disable: true
+    depends_on: []
 
   postgres:
     # PostgreSQL 16 с расширением pgvector
