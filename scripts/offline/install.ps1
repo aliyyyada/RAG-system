@@ -27,6 +27,18 @@ if (-not (Test-Path .env)) {
 }
 $envText = Get-Content .env -Raw
 if ($envText -match "POSTGRES_PASSWORD=change-me") { Fail "В .env остался пароль по умолчанию. Задайте свой POSTGRES_PASSWORD." }
+if ($envText -match "(?m)^APP_ENV=prod" -and $envText -match "(?m)^COMPOSE_PROFILES=dev") {
+  Fail "В .env для завода (APP_ENV=prod) удалите строку COMPOSE_PROFILES=dev: фейковый сервис не нужен."
+}
+# Ключ подписи токенов: если пустой — создаём случайный (48 байт) и сохраняем в .env.
+if ($envText -notmatch "(?m)^JWT_SECRET=\S{32,}") {
+  $bytes = New-Object byte[] 48
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $secret = [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+  if ($envText -match "(?m)^JWT_SECRET=.*$") { $envText = $envText -replace "(?m)^JWT_SECRET=.*$", "JWT_SECRET=$secret" }
+  else { $envText = $envText.TrimEnd() + "`r`nJWT_SECRET=$secret`r`n" }
+  Write-Host "Создан JWT_SECRET (ключ подписи сессий)."
+}
 if ($envText -match "(?m)^APP_VERSION=.*$") { $envText = $envText -replace "(?m)^APP_VERSION=.*$", "APP_VERSION=$version" }
 else { $envText = $envText.TrimEnd() + "`r`nAPP_VERSION=$version`r`n" }
 Set-Content -Path .env -Value $envText -NoNewline -Encoding ascii
@@ -72,6 +84,8 @@ for ($i = 0; $i -lt 60; $i++) {
   if ($LASTEXITCODE -eq 0 -and $body -match '"status":"ready"') {
     Write-Host $body
     Write-Host "`nСистема запущена. Откройте в браузере https://<имя-сервера>/" -ForegroundColor Green
+    Write-Host "Первый запуск? Назначьте администратора (см. docs/install-offline.md, часть 4):" -ForegroundColor Yellow
+    Write-Host "  docker compose exec app python -m app.cli create-admin <табельный номер>" -ForegroundColor Yellow
     exit 0
   }
   Start-Sleep -Seconds 5

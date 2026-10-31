@@ -1,0 +1,11 @@
+# Контекст сборки proxy — корень репозитория; нужны только frontend/, design/ и proxy/.
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+.git
+backend
+certs
+offline-bundle
+*.tar
+.env

@@ -36,18 +36,21 @@
 | **asyncpg** | Apache-2.0 | Выбран вместо psycopg 3 — тот под LGPL-3.0, это не входит в наш список. |
 | Pydantic, pydantic-settings | MIT | |
 | httpx | BSD-3 | |
+| argon2-cffi | MIT | Хэши паролей локальных и тестовых учёток |
+| PyJWT | MIT | Access-токены сессии |
 | pytest, pytest-asyncio | MIT / Apache-2.0 | только разработка |
 | Ruff | MIT | только разработка |
 
-## Frontend (план, этап 1)
+## Frontend
 
 | Библиотека | Лицензия |
 |-----------|----------|
 | Vue 3, Vue Router, Pinia, Vite | MIT |
 | TypeScript | Apache-2.0 |
 | Tailwind CSS | MIT |
-| shadcn-vue, Reka UI | MIT |
-| TanStack Table | MIT |
-| Tabler Icons | MIT |
-| Playwright | Apache-2.0 |
-| IBM Plex Sans / Mono (шрифт) | SIL OFL 1.1 — ⚠️ см. open-questions #4 |
+| Reka UI (основа shadcn-vue) | MIT |
+| Playwright | Apache-2.0 (только тесты) |
+| IBM Plex Sans / Mono (шрифт, пакеты @fontsource) | SIL OFL 1.1 — ⚠️ см. open-questions #4 |
+| Иконки | свои, из макетов (`design/index.html`) |
+
+На этапе 1 компоненты (кнопки, поля, таблицы, бейджи) взяты прямо из согласованных макетов, а окна и выпадающие меню — из Reka UI (на ней построен shadcn-vue): так интерфейс совпадает с макетом один в один. TanStack Table подключим на этапе 2, когда понадобятся таблицы документов с сортировкой.

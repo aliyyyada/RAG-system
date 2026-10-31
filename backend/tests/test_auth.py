@@ -67,6 +67,7 @@ async def test_wrong_password_counts_attempts_then_locks(client: httpx.AsyncClie
             "code": "invalid_credentials",
             "message": "Неверный табельный номер или пароль",
             "remaining_attempts": remaining,
+            "lockout_minutes": 15,
         }
     r = await login(client, "10234", "wrong-password")
     assert r.status_code == 429

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Самоподписанный сертификат для разработки (пока нет сертификата от внутреннего CA).
 # Использование: ./scripts/dev-cert.sh [имя-хоста]
+# Имя fake-service нужно фейковому внешнему сервису: app обращается к нему по HTTPS
+# внутри сети docker и проверяет сертификат этим же файлом (EXTERNAL_AUTH_CA_FILE).
 set -euo pipefail
 HOST="${1:-localhost}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)/certs"
@@ -11,6 +13,6 @@ fi
 openssl req -x509 -newkey rsa:2048 -sha256 -days 825 -nodes \
   -keyout "$DIR/server.key" -out "$DIR/server.crt" \
   -subj "/CN=$HOST" \
-  -addext "subjectAltName=DNS:$HOST,DNS:localhost,IP:127.0.0.1"
+  -addext "subjectAltName=DNS:$HOST,DNS:localhost,IP:127.0.0.1,DNS:fake-service"
 chmod 600 "$DIR/server.key"
 echo "Готово: $DIR/server.crt и $DIR/server.key"

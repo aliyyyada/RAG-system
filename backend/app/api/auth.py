@@ -104,6 +104,8 @@ def _error(err: service.LoginError) -> JSONResponse:
     body: dict[str, object] = {"code": err.code, "message": err.message}
     if err.remaining_attempts is not None:
         body["remaining_attempts"] = err.remaining_attempts
+    if err.lockout_minutes is not None:
+        body["lockout_minutes"] = err.lockout_minutes
     if err.locked_until is not None:
         body["locked_until"] = err.locked_until.isoformat()
     return JSONResponse({"detail": body}, status_code=err.status)

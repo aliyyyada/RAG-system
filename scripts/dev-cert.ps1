@@ -11,7 +11,7 @@ $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
   "CN=$HostName", $rsa, [System.Security.Cryptography.HashAlgorithmName]::SHA256,
   [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
 $san = [System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder]::new()
-$san.AddDnsName($HostName); $san.AddDnsName("localhost"); $san.AddIpAddress([System.Net.IPAddress]::Loopback)
+$san.AddDnsName($HostName); $san.AddDnsName("localhost"); $san.AddDnsName("fake-service"); $san.AddIpAddress([System.Net.IPAddress]::Loopback)
 $req.CertificateExtensions.Add($san.Build())
 $cert = $req.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(825))
 

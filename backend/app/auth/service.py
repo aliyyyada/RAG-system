@@ -56,6 +56,7 @@ class LoginError(Exception):
         status: int = 401,
         remaining_attempts: int | None = None,
         locked_until: datetime | None = None,
+        lockout_minutes: int | None = None,
     ):
         super().__init__(message)
         self.code = code
@@ -63,6 +64,7 @@ class LoginError(Exception):
         self.status = status
         self.remaining_attempts = remaining_attempts
         self.locked_until = locked_until
+        self.lockout_minutes = lockout_minutes
 
 
 def _now() -> datetime:
@@ -147,6 +149,7 @@ async def _register_failure(
         "invalid_credentials",
         "Неверный табельный номер или пароль",
         remaining_attempts=remaining,
+        lockout_minutes=settings.login_lockout_minutes,
     )
 
 
