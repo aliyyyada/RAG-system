@@ -26,7 +26,7 @@ const nav = computed(() =>
       to: '/documents',
       label: 'Документы',
       show: auth.can('search.common', 'documents.view'),
-      active: route.name === 'documents',
+      active: route.name === 'documents' || route.name === 'document',
     },
     {
       to: '/contradictions',

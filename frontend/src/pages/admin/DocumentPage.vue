@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import AppPager from '@/components/ui/AppPager.vue'
 import FormError from '@/components/ui/FormError.vue'
+import ManualAccessCard from './ManualAccessCard.vue'
 import { ApiError } from '@/api/client'
 import { sourcesApi } from '@/api/sources'
 import type { ChunkPage, DocumentCard } from '@/api/types'
@@ -163,6 +164,7 @@ function eventText(e: { event: string; details: Record<string, unknown> }): stri
       </div>
 
       <div style="display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start">
+        <div class="stack">
         <div class="card">
           <div class="card-b">
             <dl class="kv" style="grid-template-columns: 130px 1fr">
@@ -213,6 +215,8 @@ function eventText(e: { event: string; details: Record<string, unknown> }): stri
               <dd class="num">{{ doc.chunk_count }}</dd>
             </dl>
           </div>
+        </div>
+        <ManualAccessCard v-if="doc.manual" :key="doc.id" :document-id="doc.id" :is-common="doc.is_common" />
         </div>
 
         <div class="card">

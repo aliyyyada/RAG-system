@@ -12,6 +12,7 @@
             "files": [{"id", "name", "size", "mime"}]}
     GET  {base}/files/{file_id}            → байты файла
     GET  {base}/access/common              → {"ids": [...]}
+    GET  {base}/access/users/{табельный}   → {"ids": [...]}   (404 — человека нет: пусто)
 """
 
 import hashlib
@@ -183,4 +184,13 @@ class HttpJsonSource:
         data = await self._get_json("/access/common")
         if not isinstance(data, dict) or not isinstance(data.get("ids"), list):
             raise SourceUnavailable("Список общих документов: неожиданный формат ответа")
+        return {str(x) for x in data["ids"]}
+
+    async def user_document_ids(self, personnel_number: str) -> set[str]:
+        try:
+            data = await self._get_json(f"/access/users/{quote(personnel_number, safe='')}")
+        except DocumentNotFound:
+            return set()  # источник не знает этого человека — прав у него нет
+        if not isinstance(data, dict) or not isinstance(data.get("ids"), list):
+            raise SourceUnavailable("Права пользователя: неожиданный формат ответа")
         return {str(x) for x in data["ids"]}

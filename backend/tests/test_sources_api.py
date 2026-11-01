@@ -26,6 +26,9 @@ ADMIN_ENDPOINTS = (
     ("POST", "/api/admin/documents/1/reindex"),
     ("POST", "/api/admin/documents/1/exclude"),
     ("PATCH", "/api/admin/documents/1"),
+    ("GET", "/api/admin/documents/1/access"),
+    ("PUT", "/api/admin/documents/1/access"),
+    ("POST", "/api/admin/access-cache/reset"),
 )
 
 

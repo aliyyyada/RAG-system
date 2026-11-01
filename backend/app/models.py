@@ -1,4 +1,4 @@
-"""ORM-модели: очередь задач (этап 0), пользователи и RBAC (этап 1), документы (этап 2)."""
+"""ORM-модели: очередь (этап 0), пользователи и RBAC (1), документы (2), доступ (3)."""
 
 import uuid
 from datetime import datetime
@@ -13,6 +13,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -524,3 +525,90 @@ class SyncRun(Base):
     status: Mapped[str] = mapped_column(String(16), server_default=text("'running'"))
     stats: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------------------
+# Этап 3: доступ к документам
+# ---------------------------------------------------------------------------
+
+
+class AccessCache(Base):
+    """Кэш ответа источника «какие документы доступны человеку».
+
+    Одна строка на пару (человек, источник). ok=false — источник не ответил: его документы
+    человеку не показываем (fail-closed), а повторно спрашиваем через полминуты, чтобы
+    упавший источник не добавлял таймаут к каждому запросу. Сами id — в AccessCacheId.
+    Пример: Иванова (10234) × «Документооборот» → ok, 1 284 id, действует до 12:35.
+    """
+
+    __tablename__ = "access_cache"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ok: Mapped[bool] = mapped_column(Boolean)
+    id_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class AccessCacheId(Base):
+    """Один разрешённый источником документ (guid источника) для человека.
+
+    Отдельные строки, а не массив: поиск фильтрует по ним через EXISTS по первичному ключу,
+    это быстро и на тысячах id. Удаляются каскадом вместе со строкой AccessCache.
+    """
+
+    __tablename__ = "access_cache_ids"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    external_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "source_id"],
+            ["access_cache.user_id", "access_cache.source_id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class DocumentGrant(Base):
+    """Кому администратор открыл документ ручной загрузки: человеку или группе."""
+
+    __tablename__ = "document_grants"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "(user_id IS NULL) <> (group_id IS NULL)", name="ck_document_grants_target"
+        ),
+        Index(
+            "ux_document_grants_user",
+            "document_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "ux_document_grants_group",
+            "document_id",
+            "group_id",
+            unique=True,
+            postgresql_where=text("group_id IS NOT NULL"),
+        ),
+    )

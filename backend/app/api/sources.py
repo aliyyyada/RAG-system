@@ -8,6 +8,9 @@ worker обрабатывает их заново.
 Допущение (docs/open-questions.md, вопрос 15): тот, у кого есть admin.integrations, видит
 текст фрагментов любого документа — без этого не отладить разбор. Доступ к документам по
 правам источника (этап 3) на админку не распространяется.
+
+Этап 3: кнопка «Сбросить кэш прав» (POST /api/admin/access-cache/reset) и доступ к ручным
+загрузкам по людям и группам (GET/PUT /api/admin/documents/{id}/access).
 """
 
 from datetime import datetime
@@ -15,9 +18,10 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access.service import reset_cache
 from app.auth import permissions as perms
 from app.auth.deps import SessionDep, SettingsDep, client_ip, require_permission
 from app.auth.rbac import Principal
@@ -26,7 +30,17 @@ from app.ingest import service
 from app.ingest.assemble import HeaderMeta, document_caption
 from app.ingest.errors import STAGE_TITLES
 from app.ingest.report import source_report
-from app.models import Chunk, Collection, Document, DocumentEvent, DocumentFile, Source
+from app.models import (
+    Chunk,
+    Collection,
+    Document,
+    DocumentEvent,
+    DocumentFile,
+    DocumentGrant,
+    Group,
+    Source,
+    User,
+)
 from app.sources import ADAPTERS
 
 router = APIRouter(prefix="/api/admin", tags=["admin: источники и документы"])
@@ -741,3 +755,153 @@ async def update_document(
     await _doc_action(session, principal, request, doc, "document.update", **changes)
     await session.commit()
     return DocumentRow(**_row(doc, None))
+
+
+# ---------------------------------------------------------------------------
+# Этап 3: кэш прав и доступ к ручным загрузкам
+# ---------------------------------------------------------------------------
+
+
+class CacheResetRequest(BaseModel):
+    # Пусто — сбросить кэш прав всех пользователей.
+    user_id: int | None = None
+
+
+@router.post("/access-cache/reset")
+async def reset_access_cache(
+    body: CacheResetRequest,
+    principal: IntegrationsAdmin,
+    session: SessionDep,
+    request: Request,
+) -> dict[str, int]:
+    """Забыть ответы источников о правах: при следующем запросе спросим их заново.
+
+    Нужна, когда в источнике поменяли права и человек должен увидеть изменения сразу,
+    не дожидаясь, пока истечёт кэш (ACCESS_CACHE_MINUTES).
+    """
+    count = await reset_cache(session, body.user_id)
+    await write_audit(
+        session,
+        "access.cache_reset",
+        actor=principal.user,
+        target_type="user" if body.user_id else None,
+        target_id=body.user_id,
+        details={"entries": count},
+        ip=client_ip(request),
+    )
+    await session.commit()
+    return {"reset": count}
+
+
+class GrantUser(BaseModel):
+    id: int
+    personnel_number: str
+    full_name: str
+
+
+class GrantGroup(BaseModel):
+    id: int
+    name: str
+
+
+class DocumentAccessOut(BaseModel):
+    is_common: bool
+    users: list[GrantUser]
+    groups: list[GrantGroup]
+    # Все группы — для выбора в интерфейсе (у admin.integrations может не быть admin.users).
+    all_groups: list[GrantGroup]
+
+
+class DocumentAccessIn(BaseModel):
+    personnel_numbers: list[str] = Field(default_factory=list, max_length=1000)
+    group_ids: list[int] = Field(default_factory=list, max_length=1000)
+
+
+async def _manual_document(session: AsyncSession, document_id: int) -> Document:
+    doc = await _get_document(session, document_id)
+    if doc.source_id is not None:
+        raise _err(
+            409,
+            "from_source",
+            "Права на документы источника задаёт сам источник; здесь — только ручные загрузки",
+        )
+    return doc
+
+
+async def _access_out(session: AsyncSession, doc: Document) -> DocumentAccessOut:
+    users = await session.execute(
+        select(User.id, User.personnel_number, User.full_name)
+        .join(DocumentGrant, DocumentGrant.user_id == User.id)
+        .where(DocumentGrant.document_id == doc.id)
+        .order_by(User.full_name, User.personnel_number)
+    )
+    granted_groups = set(
+        await session.scalars(
+            select(DocumentGrant.group_id).where(
+                DocumentGrant.document_id == doc.id, DocumentGrant.group_id.is_not(None)
+            )
+        )
+    )
+    groups = (await session.execute(select(Group.id, Group.name).order_by(Group.name))).all()
+    return DocumentAccessOut(
+        is_common=doc.is_common,
+        users=[GrantUser(id=i, personnel_number=pn, full_name=fn) for i, pn, fn in users.all()],
+        groups=[GrantGroup(id=i, name=n) for i, n in groups if i in granted_groups],
+        all_groups=[GrantGroup(id=i, name=n) for i, n in groups],
+    )
+
+
+@router.get("/documents/{document_id}/access", response_model=DocumentAccessOut)
+async def get_document_access(
+    document_id: int, _: IntegrationsAdmin, session: SessionDep
+) -> DocumentAccessOut:
+    doc = await _manual_document(session, document_id)
+    return await _access_out(session, doc)
+
+
+@router.put("/documents/{document_id}/access", response_model=DocumentAccessOut)
+async def set_document_access(
+    document_id: int,
+    body: DocumentAccessIn,
+    principal: IntegrationsAdmin,
+    session: SessionDep,
+    request: Request,
+) -> DocumentAccessOut:
+    """Кому открыта ручная загрузка. Список заменяется целиком.
+
+    Человека, который ещё ни разу не входил, заводим заранее по табельному номеру (как
+    `create-admin`): когда он войдёт через внешний сервис, доступ уже будет на месте.
+    """
+    doc = await _manual_document(session, document_id)
+    numbers = sorted({n.strip() for n in body.personnel_numbers if n.strip()})
+    if any(len(n) > 64 for n in numbers):
+        raise _err(422, "bad_personnel_number", "Слишком длинный табельный номер")
+    group_ids = sorted(set(body.group_ids))
+    known_groups = set(await session.scalars(select(Group.id).where(Group.id.in_(group_ids))))
+    if missing := [g for g in group_ids if g not in known_groups]:
+        raise _err(422, "unknown_group", f"Нет групп с id {missing}")
+    users = {
+        u.personnel_number: u
+        for u in await session.scalars(select(User).where(User.personnel_number.in_(numbers)))
+    }
+    for n in numbers:
+        if n not in users:
+            users[n] = User(personnel_number=n, account_type="external", roles=[], groups=[])
+            session.add(users[n])
+    await session.flush()
+    await session.execute(delete(DocumentGrant).where(DocumentGrant.document_id == doc.id))
+    for u in users.values():
+        session.add(DocumentGrant(document_id=doc.id, user_id=u.id))
+    for g in group_ids:
+        session.add(DocumentGrant(document_id=doc.id, group_id=g))
+    await _doc_action(
+        session,
+        principal,
+        request,
+        doc,
+        "document.access",
+        personnel_numbers=numbers,
+        group_ids=group_ids,
+    )
+    await session.commit()
+    return await _access_out(session, doc)

@@ -37,7 +37,8 @@ export const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { bare: true, title: 'Вход' } },
     { path: '/', name: 'search', component: () => import('@/pages/SearchPage.vue'), meta: { permissions: ['search.common'], title: 'Поиск' } },
-    { path: '/documents', name: 'documents', component: () => import('@/pages/PlaceholderPage.vue'), meta: { permissions: ['search.common', 'documents.view'], title: 'Документы' }, props: { title: 'Документы', stage: 4 } },
+    { path: '/documents', name: 'documents', component: () => import('@/pages/DocumentsPage.vue'), meta: { permissions: ['search.common', 'documents.view'], title: 'Документы' } },
+    { path: '/documents/:id(\\d+)', name: 'document', component: () => import('@/pages/DocumentViewPage.vue'), meta: { permissions: ['search.common', 'documents.view'], title: 'Документ' } },
     { path: '/contradictions', name: 'contradictions', component: () => import('@/pages/PlaceholderPage.vue'), meta: { requiresAuth: true, permissions: ['contradictions.view'], title: 'Противоречия' }, props: { title: 'Противоречия', stage: 6 } },
     {
       path: '/admin',
