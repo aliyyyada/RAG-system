@@ -87,17 +87,17 @@ export function refreshSession(): Promise<TokenResponse | null> {
   return refreshing
 }
 
-export async function api<T>(
-  path: string,
-  init: { method?: string; body?: unknown; form?: FormData; query?: Record<string, unknown> } = {},
-): Promise<T> {
+type RequestInit = { method?: string; body?: unknown; form?: FormData; query?: Record<string, unknown> }
+
+/** Запрос с access-токеном; при 401 один раз обновляет сессию и повторяет. */
+async function request(path: string, init: RequestInit, accept = 'application/json'): Promise<Response> {
   const url = new URL('/api' + path, window.location.origin)
   for (const [k, v] of Object.entries(init.query ?? {})) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v))
   }
 
   const send = () => {
-    const headers: Record<string, string> = { Accept: 'application/json' }
+    const headers: Record<string, string> = { Accept: accept }
     if (init.body !== undefined) headers['Content-Type'] = 'application/json'
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`
     // FormData (загрузка файла): Content-Type с границей частей браузер ставит сам.
@@ -121,6 +121,29 @@ export async function api<T>(
     }
   }
   if (!res.ok) throw await parseError(res)
+  return res
+}
+
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await request(path, init)
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+/**
+ * Скачать файл через API. Обычная ссылка <a href> не годится: access-токен живёт в памяти
+ * и в заголовок Authorization попадает только из JS. Поэтому получаем файл fetch'ем
+ * и отдаём браузеру как blob.
+ */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const res = await request(path, {}, '*/*')
+  const blob = await res.blob()
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(href), 10_000)
 }

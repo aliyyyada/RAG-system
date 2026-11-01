@@ -4,7 +4,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import StateBlock from '@/components/StateBlock.vue'
 import FormError from '@/components/ui/FormError.vue'
 import { ApiError } from '@/api/client'
-import { sourcesApi } from '@/api/sources'
+import { accessApi, sourcesApi } from '@/api/sources'
 import type { Source } from '@/api/types'
 import { formatDateTime, formatNumber } from '@/utils/format'
 import SourceDialog from './dialogs/SourceDialog.vue'
@@ -13,6 +13,22 @@ import SourceDialog from './dialogs/SourceDialog.vue'
 const sources = ref<Source[] | null>(null)
 const error = ref<string | null>(null)
 const createOpen = ref(false)
+
+// Права на документы кэшируются на несколько минут (ACCESS_CACHE_MINUTES). Если в источнике
+// поменяли права и человек должен увидеть это сразу — сбрасываем кэш.
+const resetting = ref(false)
+const resetDone = ref<number | null>(null)
+async function resetCache() {
+  resetting.value = true
+  error.value = null
+  try {
+    resetDone.value = (await accessApi.resetCache()).reset
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось сбросить кэш прав'
+  } finally {
+    resetting.value = false
+  }
+}
 
 async function load() {
   error.value = null
@@ -32,11 +48,21 @@ onMounted(load)
         <h1>Источники</h1>
         <p>Внешние системы, из которых загружаются документы. Права на документы спрашиваем у источника.</p>
       </div>
+      <button class="btn btn-secondary" type="button" :disabled="resetting" @click="resetCache">
+        <AppIcon name="refresh" />Сбросить кэш прав
+      </button>
       <button class="btn btn-primary" type="button" @click="createOpen = true">
         <AppIcon name="plus" />Подключить источник
       </button>
     </div>
     <FormError :message="error" style="margin-bottom: 12px" />
+    <div v-if="resetDone !== null" class="alert a-ok" style="margin-bottom: 12px" role="status">
+      <AppIcon name="check" />
+      <div>
+        <b>Кэш прав сброшен</b>При следующем запросе каждого пользователя права на документы будут
+        запрошены у источников заново (записей сброшено: {{ resetDone }}).
+      </div>
+    </div>
 
     <div class="card">
       <table class="tbl">

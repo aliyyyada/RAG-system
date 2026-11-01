@@ -262,3 +262,75 @@ export interface CollectionInfo {
   documents: number
   errors: number
 }
+
+// ---------- Документы для пользователя (этап 3) ----------
+
+/** Источник, который не ответил на запрос прав: его документы скрыты. */
+export interface UnavailableSource {
+  id: number
+  name: string
+  message: string
+}
+
+export interface UserDocument {
+  id: number
+  caption: string
+  number: string | null
+  title: string
+  doc_type: string | null
+  doc_date: string | null
+  topic: string | null
+  source_name: string
+  legal_status: string | null
+  is_common: boolean
+}
+
+export interface UserDocumentList {
+  items: UserDocument[]
+  total: number
+  total_in_system: number
+  page: number
+  page_size: number
+  unavailable_sources: UnavailableSource[]
+}
+
+export interface DocumentFilters {
+  sources: { value: string; label: string }[]
+  doc_types: string[]
+  unavailable_sources: UnavailableSource[]
+}
+
+export interface UserDocumentView extends UserDocument {
+  fields: { label: string; value: string }[]
+  description: string | null
+  files: { id: number; name: string; mime: string; size: number; pages: number | null }[]
+  parts: { name: string; rows: number }[]
+  version: string | null
+}
+
+export interface ViewChunk {
+  id: number
+  ord: number
+  kind: 'header' | 'text' | 'table'
+  text: string
+  section: string | null
+  point: string | null
+  page_from: number | null
+  page_to: number | null
+  file_id: number | null
+}
+
+export interface ViewChunkList {
+  items: ViewChunk[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/** Кому открыта ручная загрузка (админка). */
+export interface ManualDocumentAccess {
+  is_common: boolean
+  users: { id: number; personnel_number: string; full_name: string }[]
+  groups: { id: number; name: string }[]
+  all_groups: { id: number; name: string }[]
+}

@@ -5,6 +5,7 @@ import type {
   DocumentCard,
   DocumentPage,
   DocumentRow,
+  ManualDocumentAccess,
   Source,
   SourceSettings,
 } from './types'
@@ -49,4 +50,13 @@ export const sourcesApi = {
   updateDocument: (id: number, body: { is_common?: boolean; title?: string }) =>
     api<DocumentRow>(`/admin/documents/${id}`, { method: 'PATCH', body }),
   upload: (form: FormData) => api<{ id: number }>('/documents/manual', { form }),
+}
+
+// Этап 3: кэш прав и доступ к ручным загрузкам.
+export const accessApi = {
+  resetCache: (userId?: number) =>
+    api<{ reset: number }>('/admin/access-cache/reset', { method: 'POST', body: userId ? { user_id: userId } : {} }),
+  manual: (docId: number) => api<ManualDocumentAccess>(`/admin/documents/${docId}/access`),
+  setManual: (docId: number, body: { personnel_numbers: string[]; group_ids: number[] }) =>
+    api<ManualDocumentAccess>(`/admin/documents/${docId}/access`, { method: 'PUT', body }),
 }
