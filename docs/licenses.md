@@ -24,6 +24,8 @@
 | Docker Engine | Apache-2.0 | ✅ |
 | Docker Desktop | Проприетарная, платная для крупных компаний | ⚠️ см. open-questions #2 |
 | Tesseract OCR (этап 2) | Apache-2.0 | ✅ |
+| bge-reranker-v2-m3 (BAAI, реранкер, этап 4) | Apache-2.0 | ✅ |
+| torch, transformers (только экспорт реранкера в ONNX на машине с интернетом, в пакет не входят) | BSD-3 / Apache-2.0 | ✅ |
 | Ory Hydra (этап 7а) | Apache-2.0 | ✅ |
 
 ## Backend (Python)
@@ -45,6 +47,10 @@
 | cryptography, charset-normalizer | Apache-2.0 или BSD / MIT | Зависимости pdfminer.six (зашифрованные PDF, кодировки) |
 | python-multipart | Apache-2.0 | Приём файла при ручной загрузке |
 | tzdata | Apache-2.0 | Часовой пояс завода для ночной сверки |
+| onnxruntime | MIT | Реранкер на CPU (этап 4) |
+| numpy, protobuf, flatbuffers, packaging | BSD-3 / BSD-3 / Apache-2.0 / Apache-2.0 или BSD | Зависимости onnxruntime |
+| tokenizers (HuggingFace) | Apache-2.0 | Токенизатор реранкера. Ставится без зависимостей (`requirements-nodeps.txt`): иначе тянет huggingface_hub → tqdm (MPL-2.0), а скачивать модели из интернета нам не нужно |
+| onnx | Apache-2.0 | Только тесты: игрушечная модель для проверки реранкера |
 | reportlab | BSD | Только генерация тестовых PDF (`fakes/make_fixtures.py`), в образ не входит |
 | pytest, pytest-asyncio | MIT / Apache-2.0 | только разработка |
 | Ruff | MIT | только разработка |

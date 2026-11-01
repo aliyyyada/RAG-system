@@ -87,7 +87,13 @@ export function refreshSession(): Promise<TokenResponse | null> {
   return refreshing
 }
 
-type RequestInit = { method?: string; body?: unknown; form?: FormData; query?: Record<string, unknown> }
+type RequestInit = {
+  method?: string
+  body?: unknown
+  form?: FormData
+  query?: Record<string, unknown>
+  signal?: AbortSignal
+}
 
 /** Запрос с access-токеном; при 401 один раз обновляет сессию и повторяет. */
 async function request(path: string, init: RequestInit, accept = 'application/json'): Promise<Response> {
@@ -107,6 +113,7 @@ async function request(path: string, init: RequestInit, accept = 'application/js
       headers,
       body,
       credentials: 'same-origin',
+      signal: init.signal,
     })
   }
 
@@ -122,6 +129,14 @@ async function request(path: string, init: RequestInit, accept = 'application/js
   }
   if (!res.ok) throw await parseError(res)
   return res
+}
+
+/**
+ * POST с потоковым ответом (SSE): ответ модели приходит по кусочку. EventSource не умеет
+ * POST и заголовок Authorization, поэтому читаем поток fetch'ем (см. api/sse.ts).
+ */
+export function streamRequest(path: string, body: unknown, signal: AbortSignal): Promise<Response> {
+  return request(path, { method: 'POST', body, signal }, 'text/event-stream')
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
