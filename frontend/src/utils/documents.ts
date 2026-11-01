@@ -1,12 +1,27 @@
 // Помощники для просмотра документа: статус, разбор текста фрагмента, содержание.
 import type { ViewChunk } from '@/api/types'
 
-/** Бейдж статуса документа так, как его назвал источник: «Действует», «Отменён». */
+/** Бейдж статуса документа: «Действует», «Отменён» (по связям или из источника). */
 export function legalStatusBadge(status: string): string {
   const s = status.toLowerCase()
   if (s.startsWith('действ')) return 'b-ok'
   if (s.startsWith('отмен') || s.startsWith('утрат')) return 'b-neutral'
   return 'b-outline'
+}
+
+/**
+ * Статус → бейджи по макету: «Действует, изменён» (этап 5: есть изменяющий документ)
+ * показывается двумя бейджами — «Действует» и «Есть изменения».
+ */
+export function statusBadges(status: string | null | undefined): { text: string; cls: string }[] {
+  if (!status) return []
+  if (status === 'Действует, изменён') {
+    return [
+      { text: 'Действует', cls: 'b-ok' },
+      { text: 'Есть изменения', cls: 'b-warn plain' },
+    ]
+  }
+  return [{ text: status, cls: legalStatusBadge(status) }]
 }
 
 export type TextBlock =

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LegalStatus from '@/components/LegalStatus.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
@@ -6,8 +7,9 @@ import StateBlock from '@/components/StateBlock.vue'
 import FormError from '@/components/ui/FormError.vue'
 import { ApiError } from '@/api/client'
 import { documentsApi } from '@/api/documents'
-import type { UserDocumentView, ViewChunk } from '@/api/types'
-import { buildToc, chunkPlace, legalStatusBadge, parseChunkText } from '@/utils/documents'
+import { graphApi } from '@/api/graph'
+import type { DocumentGraph, GraphLink, UserDocumentView, ViewChunk } from '@/api/types'
+import { buildToc, chunkPlace, parseChunkText } from '@/utils/documents'
 import { formatSize, plural } from '@/utils/format'
 
 // Просмотр документа по макету doc. Открывается из списка или по ссылке на источник
@@ -24,6 +26,17 @@ const denied = ref<{ code: string; message: string } | null>(null)
 const error = ref<string | null>(null)
 const loading = ref(true)
 const downloadError = ref<string | null>(null)
+// Связи из графа (этап 5): что документ отменяет и изменяет, чем изменён, что в нём упомянуто.
+const graph = ref<DocumentGraph | null>(null)
+
+async function loadGraph() {
+  graph.value = null
+  try {
+    graph.value = await graphApi.document(id.value)
+  } catch {
+    graph.value = null // связи — дополнение: без них документ всё равно открывается
+  }
+}
 
 async function load() {
   loading.value = true
@@ -33,6 +46,7 @@ async function load() {
   chunks.value = []
   try {
     doc.value = await documentsApi.get(id.value)
+    void loadGraph()
     const all: ViewChunk[] = []
     for (let page = 1; page <= MAX_CHUNK_PAGES; page++) {
       const part = await documentsApi.chunks(id.value, page)
@@ -104,6 +118,24 @@ async function download(file: { id: number; name: string }) {
     downloadError.value = e instanceof ApiError ? e.message : 'Не удалось скачать файл'
   }
 }
+// Связи по макету: сначала исходящие («Отменяет», «Изменяет»), затем входящие («Изменён
+// документом»). Ссылка ведёт на место, где связь написана: исходящая — в этом документе,
+// входящая — в другом документе. Цель недоступна или её нет в системе — только реквизиты.
+const links = computed(() => {
+  const g = graph.value
+  if (!g) return []
+  const order = { cancels: 0, amends: 1, executes: 2, refers: 3 }
+  const sort = (a: GraphLink, b: GraphLink) => order[a.kind] - order[b.kind]
+  return [...g.outgoing.slice().sort(sort).map((l) => ({ ...l, dir: 'out' as const })), ...g.incoming.slice().sort(sort).map((l) => ({ ...l, dir: 'in' as const }))]
+})
+function linkTarget(l: GraphLink & { dir: 'in' | 'out' }) {
+  if (l.dir === 'out') {
+    return l.document ? { name: 'document', params: { id: l.document.id } } : { name: 'document', params: { id: id.value }, query: { chunk: l.chunk_id } }
+  }
+  return { name: 'document', params: { id: l.evidence_document_id }, query: { chunk: l.chunk_id } }
+}
+const kindTitle = (l: GraphLink & { dir: 'in' | 'out' }) => l.kind_label.charAt(0).toUpperCase() + l.kind_label.slice(1)
+
 const mainFile = computed(() => doc.value?.files[0] ?? null)
 const fileKind = (mime: string) => (mime.includes('pdf') ? 'PDF' : 'DOCX')
 </script>
@@ -146,7 +178,7 @@ const fileKind = (mime: string) => (mime.includes('pdf') ? 'PDF' : 'DOCX')
           {{ headerLine.title }} <span v-if="headerLine.subtitle" class="muted">{{ headerLine.subtitle }}</span>
         </h1>
       </div>
-      <span v-if="doc.legal_status" class="badge" :class="legalStatusBadge(doc.legal_status)">{{ doc.legal_status }}</span>
+      <LegalStatus :status="doc.legal_status" />
       <span v-if="doc.is_common" class="badge b-outline plain">Общий</span>
       <template v-if="hits.length">
         <span class="small muted num">Фрагмент {{ hitIndex + 1 }} из {{ hits.length }}</span>
@@ -232,7 +264,32 @@ const fileKind = (mime: string) => (mime.includes('pdf') ? 'PDF' : 'DOCX')
             <li v-for="p in doc.parts" :key="p.name">«{{ p.name }}» — {{ p.rows }} {{ plural(p.rows, 'строка', 'строки', 'строк') }}</li>
           </ul>
         </div>
-        <p class="small muted">Связи с другими документами (что отменяет, чем изменён) появятся вместе с графом документов.</p>
+        <div v-if="graph?.status_note" class="alert a-warn" role="status">
+          <AppIcon name="warn" />
+          <div><b>{{ graph.status_note }}</b>Не применяйте требования этого документа без проверки.</div>
+        </div>
+        <div v-if="links.length" class="rel" data-testid="doc-links">
+          <h4>Связи</h4>
+          <RouterLink
+            v-for="(l, i) in links"
+            :key="i"
+            :to="linkTarget(l)"
+            :title="l.quote"
+          >
+            <em>{{ kindTitle(l) }}</em>
+            <span class="row" style="gap: 4px">
+              <LegalStatus v-if="l.document" :status="l.document.legal_status" />
+              <span v-else class="badge b-outline plain" title="Документа нет в системе или он вам недоступен">недоступен</span>
+            </span>
+            <span>{{ l.label }}</span>
+          </RouterLink>
+        </div>
+        <div v-if="graph?.entities.length" data-testid="doc-entities">
+          <h4>Упоминаются</h4>
+          <div class="row wrap" style="margin-top: 10px">
+            <span v-for="e in graph.entities.slice(0, 24)" :key="e.id" class="badge b-outline plain" :title="e.type_label">{{ e.name }}</span>
+          </div>
+        </div>
       </aside>
     </div>
   </template>

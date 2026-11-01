@@ -386,3 +386,77 @@ export interface ChatOut extends ChatItem {
   messages: ChatMessageOut[]
   history_days: number
 }
+
+// ---------- Граф знаний (этап 5) ----------
+
+/** Режим поиска: chunks — по фрагментам, graph — по связям, mixed — оба. */
+export type SearchMode = 'chunks' | 'graph' | 'mixed'
+
+export interface GraphLink {
+  kind: 'cancels' | 'amends' | 'executes' | 'refers'
+  kind_label: string
+  /** null — документа нет в системе или он вам недоступен: только реквизиты из текста. */
+  document: { id: number; caption: string; legal_status: string | null } | null
+  label: string
+  evidence_document_id: number
+  chunk_id: number
+  quote: string
+}
+
+export interface GraphEntity {
+  id: number
+  type: string
+  type_label: string
+  name: string
+  mentions: number
+}
+
+export interface DocumentGraph {
+  legal_status: string | null
+  status_note: string | null
+  outgoing: GraphLink[]
+  incoming: GraphLink[]
+  entities: GraphEntity[]
+}
+
+export interface GraphEstimate {
+  at: string
+  model: string
+  chunks_pending: number
+  eligible_share: number
+  chunks_to_process: number
+  sample: number
+  errors: number
+  avg_seconds: number | null
+  min_seconds: number | null
+  max_seconds: number | null
+  tokens_per_second: number | null
+  forecast_hours: number | null
+  examples: { chunk_id: number; document: string; entities: string[]; relations: string[] }[]
+}
+
+export interface GraphAdmin {
+  llm_enabled: boolean
+  model: string
+  links: {
+    by_kind: Record<GraphLink['kind'], number>
+    unresolved: number
+    documents_indexed: number
+    documents_done: number
+    statuses: Record<string, number>
+  }
+  llm: {
+    chunks: { pending: number; done: number; skipped: number; error: number }
+    seconds_per_chunk: number
+    seconds_basis: 'measured' | 'estimate' | 'assumption'
+    eligible_share: number
+    forecast_seconds: number
+    forecast_hours: number
+  }
+  entities: { by_type: Record<string, number>; total: number }
+  relations: number
+  jobs: Record<string, number>
+  estimate_running: boolean
+  last_estimate: GraphEstimate | null
+  labels: { entities: Record<string, string>; kinds: Record<string, string> }
+}

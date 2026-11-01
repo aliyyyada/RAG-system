@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LegalStatus from '@/components/LegalStatus.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
@@ -10,7 +11,6 @@ import { documentsApi } from '@/api/documents'
 import type { DocumentFilters, UserDocumentList } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate, formatNumber } from '@/utils/format'
-import { legalStatusBadge } from '@/utils/documents'
 
 // «Документы» по макету docs: только документы, которые разрешили источники,
 // плюс общие. Фильтры живут в адресе страницы, чтобы ссылкой можно было поделиться.
@@ -200,7 +200,7 @@ const unavailable = computed(() => data.value?.unavailable_sources ?? [])
             <td>{{ d.source_name }}</td>
             <td class="num" style="white-space: nowrap">{{ formatDate(d.doc_date) }}</td>
             <td>
-              <span v-if="d.legal_status" class="badge" :class="legalStatusBadge(d.legal_status)">{{ d.legal_status }}</span>
+              <LegalStatus :status="d.legal_status" />
             </td>
             <td><span v-if="d.is_common" class="badge b-outline plain">Общий</span></td>
           </tr>

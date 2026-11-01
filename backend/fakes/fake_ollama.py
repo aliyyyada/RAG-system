@@ -154,6 +154,16 @@ def compose_answer(messages: list[dict[str, str]]) -> str:
     if not re.search(r"[a-zа-яё]{3,}", question.lower()):
         return OFF_TOPIC
     q = set(stems(question))
+    # Справка графа (этап 5): «- Приказ № 112 … отменяет Приказ № 45 … [1]». Если связь
+    # подходит к вопросу лучше фрагментов — отвечаем ей, как сделала бы настоящая модель.
+    head = system.split("Фрагменты:", 1)[0]
+    if "графа знаний" in head:
+        facts = re.findall(r"^- (.+?) \[(\d+)\]$", head, re.M)
+        scored = [(len(q & set(stems(t))), t, n) for t, n in facts]
+        scored = [x for x in scored if x[0] >= 2]
+        if scored:
+            _, fact, n = max(scored, key=lambda x: x[0])
+            return f"По документам: {fact} [{n}]"
     fragments = system.split("Фрагменты:", 1)[-1]
     best: tuple[int, int, str] | None = None
     for m in _FRAGMENT.finditer(fragments):

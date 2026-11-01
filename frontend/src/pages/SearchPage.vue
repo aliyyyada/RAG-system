@@ -270,8 +270,16 @@ function resetFilters() {
         >
           <AppIcon v-if="chat.filters.only_active" name="check" :size="15" />Только действующие
         </button>
-        <span class="grow"></span>
         <button v-if="filtersOn" class="btn btn-ghost btn-sm" type="button" @click="resetFilters">Сбросить</button>
+        <span class="grow"></span>
+        <label class="flt" title="Обычный — поиск по тексту фрагментов. Графовый — по связям документов и упоминаниям (кто отвечает, что отменено). Смешанный — оба сразу.">
+          Режим поиска
+          <select v-model="chat.mode" class="select select-sm" aria-label="Режим поиска" data-testid="search-mode">
+            <option value="mixed">Смешанный</option>
+            <option value="chunks">Обычный</option>
+            <option value="graph">Графовый</option>
+          </select>
+        </label>
       </div>
 
       <div ref="msgs" class="msgs" aria-live="polite">

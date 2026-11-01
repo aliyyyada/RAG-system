@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import LegalStatus from '@/components/LegalStatus.vue'
 import { computed } from 'vue'
 import type { AnswerSource } from '@/api/types'
 import { splitHighlight } from '@/utils/answer'
-import { legalStatusBadge } from '@/utils/documents'
 
 // Карточка источника ответа справа: номер, документ, статус, место, отрывок с подсветкой.
 // Нажатие открывает документ на этом фрагменте: /documents/12?chunk=345.
@@ -19,7 +19,7 @@ const to = computed(() =>
   <RouterLink v-if="to && source.available !== false" :to="to" class="src" :class="{ on: active }" :data-n="source.n">
     <div class="src-t"><span class="cite">{{ source.n }}</span>{{ source.caption }}</div>
     <div class="src-meta">
-      <span v-if="source.legal_status" class="badge" :class="legalStatusBadge(source.legal_status)">{{ source.legal_status }}</span>
+      <LegalStatus :status="source.legal_status" />
       <span v-if="source.place">{{ source.place }}</span>
       <span v-if="source.source_name">{{ source.source_name }}</span>
     </div>

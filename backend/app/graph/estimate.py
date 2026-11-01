@@ -4,7 +4,7 @@
 или кнопка «Оценить время» на странице «Граф знаний» (задача worker'а `graph_estimate`).
 
 Что делает:
-1. Берёт случайную выборку необработанных фрагментов и считает, какая доля из них пройдёт
+1. Берёт случайную выборку фрагментов и считает, какая доля из них пройдёт
    фильтр (app/graph/extract.skip_reason) — остальные модель не увидит.
 2. Отправляет `sample` подходящих фрагментов в модель по одному (как настоящий worker,
    уступая очередь пользователям) и меряет время каждого вызова. В граф ничего не пишет.
@@ -72,7 +72,9 @@ async def estimate(
             await s.execute(
                 select(Chunk.id, Chunk.section, Chunk.text, Document)
                 .join(Document, Document.id == Chunk.document_id)
-                .where(Chunk.graph_state.is_(None), Document.deleted_at.is_(None))
+                # Время на фрагмент от его состояния не зависит, поэтому выборка — из всех
+                # фрагментов: замер можно повторить и после того, как граф уже построен.
+                .where(Document.deleted_at.is_(None))
                 .order_by(func.random())
                 .limit(2000)
             )
