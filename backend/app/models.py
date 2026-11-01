@@ -1,5 +1,5 @@
 """ORM-модели: очередь (этап 0), пользователи и RBAC (1), документы (2), доступ (3),
-поиск и чат (4), граф знаний (5)."""
+поиск и чат (4), граф знаний (5), противоречия (6)."""
 
 import uuid
 from datetime import datetime
@@ -13,6 +13,7 @@ from sqlalchemy import (
     Computed,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -433,6 +434,10 @@ class Document(Base):
     legal_status: Mapped[str | None] = mapped_column(String(64))
     # Версия документа (indexed_version), для которой уже извлечены связи по правилам.
     links_version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Этап 6. Версия документа, для которой уже искали противоречия, и сколько пар
+    # фрагментов при этом нашлось (из них считается прогноз времени в админке).
+    contra_version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contra_pairs: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -883,3 +888,90 @@ class AppFlag(Base):
     value: Mapped[Any] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
+# ---------------------------------------------------------------------------
+# Противоречия (этап 6)
+# ---------------------------------------------------------------------------
+
+CONTRA_VERDICTS = ("contradiction", "possible", "none", "error")
+REVIEW_STATUSES = ("new", "confirmed", "rejected")
+
+
+class ContradictionCheck(Base):
+    """Проверка пары текстов моделью — кэш и решение специалиста.
+
+    Ключ — хэши текстов двух фрагментов (key_a < key_b), а не id фрагментов: при
+    переиндексации документа фрагменты пересоздаются, но если текст пары не изменился,
+    модель второй раз не спрашиваем, а «Подтверждено» / «Отклонено» сохраняется.
+
+    Пример: п. 3.1 Положения о СУОТ («не реже одного раза в год») и таблица п. 4.4
+    приказа № 112 («1 раз в 3 года») → verdict = contradiction, topic = «Периодичность
+    обучения по работам на высоте», quote_a / quote_b — точные цитаты для подсветки.
+    """
+
+    __tablename__ = "contradiction_checks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    key_a: Mapped[str] = mapped_column(String(64))
+    key_b: Mapped[str] = mapped_column(String(64))
+    # contradiction — прямое противоречие; possible — возможно (разные условия, частный
+    # случай), нужна проверка специалистом; none — нет; error — модель ответила не по схеме.
+    verdict: Mapped[str] = mapped_column(String(16))
+    topic: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    explanation: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    quote_a: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    quote_b: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    model: Mapped[str | None] = mapped_column(String(100))
+    ms: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(String(200))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    review_status: Mapped[str] = mapped_column(String(16), server_default=text("'new'"))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(
+            "verdict IN ('contradiction', 'possible', 'none', 'error')",
+            name="ck_contradiction_checks_verdict",
+        ),
+        CheckConstraint(
+            "review_status IN ('new', 'confirmed', 'rejected')",
+            name="ck_contradiction_checks_review",
+        ),
+        CheckConstraint("key_a < key_b", name="ck_contradiction_checks_order"),
+        Index("ux_contradiction_checks_keys", "key_a", "key_b", unique=True),
+        Index("ix_contradiction_checks_verdict", "verdict"),
+    )
+
+
+class Contradiction(Base):
+    """Противоречие между двумя текущими фрагментами разных документов.
+
+    chunk_a / chunk_b соответствуют key_a / key_b проверки. Человеку видно, только если
+    ему доступны ОБА документа (фильтр visible(access) в SQL). Документ переразобрали —
+    фрагменты удалены, запись удалилась каскадом и появится снова после новой проверки
+    (из кэша, без модели, если текст не изменился).
+    """
+
+    __tablename__ = "contradictions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    check_id: Mapped[int] = mapped_column(ForeignKey("contradiction_checks.id", ondelete="CASCADE"))
+    chunk_a_id: Mapped[int] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"))
+    chunk_b_id: Mapped[int] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"))
+    document_a_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    document_b_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    # Откуда пара: vector — похожие фрагменты, graph — общая сущность или связь документов.
+    origin: Mapped[str] = mapped_column(String(8))
+    similarity: Mapped[float | None] = mapped_column(Float)
+    found_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ux_contradictions_chunks", "chunk_a_id", "chunk_b_id", unique=True),
+        Index("ix_contradictions_check", "check_id"),
+        Index("ix_contradictions_doc_a", "document_a_id"),
+        Index("ix_contradictions_doc_b", "document_b_id"),
+        Index("ix_contradictions_chunk_b", "chunk_b_id"),
+    )

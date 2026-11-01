@@ -288,6 +288,19 @@ async def graph_llm(enabled: bool) -> str:
     return "Извлечение моделью выключено (обработанное остаётся в графе)"
 
 
+async def contra(enabled: bool) -> str:
+    """Включить или выключить поиск противоречий (то же, что кнопка в админке)."""
+    from app.contradictions.scan import backfill_tick
+    from app.core.flags import CONTRA_ENABLED, set_flag
+
+    async with get_sessionmaker()() as session, session.begin():
+        await set_flag(session, CONTRA_ENABLED, enabled, "cli")
+        n = await backfill_tick(session, limit=100_000) if enabled else 0
+    if enabled:
+        return f"Поиск противоречий включён, в очередь поставлено документов: {n}"
+    return "Поиск противоречий выключен (найденное остаётся)"
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -338,6 +351,9 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("graph-llm", help="Включить / выключить извлечение сущностей моделью")
     p.add_argument("state", choices=["on", "off"])
 
+    p = sub.add_parser("contra", help="Включить / выключить поиск противоречий моделью")
+    p.add_argument("state", choices=["on", "off"])
+
     args = parser.parse_args(argv)
 
     async def run() -> str:
@@ -368,6 +384,8 @@ def main(argv: list[str] | None = None) -> None:
                 return await graph_estimate(args.sample)
             if args.cmd == "graph-llm":
                 return await graph_llm(args.state == "on")
+            if args.cmd == "contra":
+                return await contra(args.state == "on")
             return await seed_test_users()
         finally:
             await dispose_engine()

@@ -2,7 +2,7 @@
 
 Обработчики регистрируются в HANDLERS. Этап 2: синхронизация с источником, ночная сверка,
 обработка документа. Этап 4: векторизация фрагментов. Этап 5: граф (связи по правилам,
-извлечение сущностей моделью). Противоречия — этап 6.
+извлечение сущностей моделью). Этап 6: поиск противоречий.
 Раз в SCHEDULE_EVERY_SECONDS worker сам ставит синхронизации, которым пора (планировщик),
 досылает на векторизацию фрагменты без вектора и удаляет историю чатов старше срока.
 """
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.chat.history import cleanup_old_chats
 from app.config import Settings, get_settings
+from app.contradictions import scan as contra_scan
 from app.db import dispose_engine, get_sessionmaker
 from app.graph import estimate as graph_estimate
 from app.graph import extract as graph_extract
@@ -49,6 +50,7 @@ HANDLERS: dict[str, Handler] = {
     graph_rules.RULES_JOB: graph_rules.handle_rules,
     graph_extract.EXTRACT_JOB: graph_extract.handle_extract,
     graph_estimate.ESTIMATE_JOB: graph_estimate.handle_estimate,
+    contra_scan.SCAN_JOB: contra_scan.handle_scan,
 }
 
 
@@ -109,12 +111,15 @@ async def main() -> None:
                     links = await graph_rules.backfill_tick(session)
                     extracts = await graph_extract.backfill_tick(session)
                     await graph_extract.cleanup_orphans(session)
+                    contra = await contra_scan.backfill_tick(session)
                 if planned:
                     log.info("scheduled: %s", planned)
                 if embeds:
                     log.info("на векторизацию поставлено документов: %d", embeds)
                 if links or extracts:
                     log.info("граф: связи для %d документов, модель для %d", links, extracts)
+                if contra:
+                    log.info("противоречия: на проверку поставлено документов: %d", contra)
                 if removed:
                     log.info(
                         "удалено чатов старше %d дней: %d", settings.chat_history_days, removed
