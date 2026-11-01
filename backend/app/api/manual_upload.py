@@ -3,7 +3,8 @@
 Документ попадает в коллекцию «Ручные загрузки». Файл проверяется по содержимому
 (PDF или DOCX, не больше MANUAL_UPLOAD_MAX_MB), сохраняется на диск под SHA-256 и
 ставится в очередь с наивысшим приоритетом — через несколько секунд он «готов».
-Признак «общий» ставит загрузивший; кому ещё доступен документ — этап 3.
+Признак «общий» ставит загрузивший. Загрузивший сразу получает доступ к документу, чтобы
+проверить разбор; кому ещё он открыт, администратор задаёт в карточке документа (этап 3).
 """
 
 import hashlib
@@ -19,7 +20,7 @@ from app.auth.service import write_audit
 from app.ingest.files import MIME, detect_type
 from app.ingest.pipeline import PRIORITY_MANUAL, add_event, enqueue_document
 from app.ingest.storage import FileStore
-from app.models import Collection, Document, DocumentFile
+from app.models import Collection, Document, DocumentFile, DocumentGrant
 
 router = APIRouter(prefix="/api/documents", tags=["документы"])
 
@@ -82,6 +83,8 @@ async def upload_manual(
     session.add(doc)
     await session.flush()
     session.add(DocumentFile(document_id=doc.id, name=name, mime=MIME[kind], size=size, sha256=sha))
+    if principal.user is not None:
+        session.add(DocumentGrant(document_id=doc.id, user_id=principal.user.id))
     actor = principal.user.personnel_number if principal.user else None
     await add_event(session, doc.id, "uploaded", actor=actor, file=name, size=size)
     await enqueue_document(session, doc.id, settings, PRIORITY_MANUAL)

@@ -157,13 +157,15 @@ def fake_source():  # type: ignore[no-untyped-def]
 
     from app.sources import set_transport_override
     from fakes.fake_service import app as fake_app
-    from fakes.fake_source import SOURCE
+    from fakes.fake_source import ARCHIVE, SOURCE
 
     SOURCE.reset()
+    ARCHIVE.reset()
     set_transport_override(ASGITransport(app=fake_app))
     yield SOURCE
     set_transport_override(None)
     SOURCE.reset()
+    ARCHIVE.reset()
 
 
 @pytest.fixture

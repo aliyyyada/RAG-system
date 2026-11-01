@@ -18,6 +18,7 @@ from sqlalchemy import case, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access.service import reset_cache as reset_access_cache
 from app.auth.passwords import verify_password
 from app.auth.providers import AuthOutcome, AuthProvider
 from app.auth.tokens import create_access_token, hash_refresh_token, new_refresh_token
@@ -236,6 +237,9 @@ async def login(
         .values(failed_count=0, locked_until=None)
     )
     user.last_login_at = _now()
+    # Права на документы при входе спрашиваем у источников заново (ТЗ, п. 6): если человеку
+    # только что выдали доступ, он увидит документы сразу, а не через 5 минут.
+    await reset_access_cache(session, user.id)
     issued = await _create_session(session, settings, user, client)
     await _log_event(session, login_name, "success", client, user)
     if user.account_type == "local":

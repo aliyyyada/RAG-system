@@ -14,10 +14,17 @@
 | Журнал инструктажей (148 строк, пришло 120)| ошибка проверки полноты                        |
 | Приказ № 12 (удалён)                       | мягкое удаление                                |
 
-Тесты меняют состояние через объект SOURCE: touch() — документ изменился,
-delete() — удалён в источнике, drop() — пропал совсем, unavailable — источник «лёг».
+Права (этап 3): `GET /access/users/{табельный}` отдаёт id документов, доступных человеку
+(таблица ACCESS ниже). Второй источник «Архив ОТ» (/archive, два документа без файлов)
+нужен, чтобы проверить параллельный опрос источников и «один источник упал, другой работает».
+
+Тесты меняют состояние через объекты SOURCE и ARCHIVE: touch() — документ изменился,
+delete() — удалён в источнике, drop() — пропал совсем, unavailable — источник «лёг»,
+access_delay — источник отвечает на запрос прав медленно, access_calls — сколько раз
+нас спросили о правах (проверка кэша).
 """
 
+import asyncio
 import copy
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -25,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 FILES_DIR = Path(__file__).resolve().parent / "files"
 _NS = uuid.UUID("6f1c2a4e-1d1b-4c8e-9a51-0b7d2f3c9e10")
@@ -194,6 +201,10 @@ def _seed() -> dict[str, dict[str, Any]]:
             "deleted_at": "2021-01-01T00:00:00",
         },
     ]
+    return _build(docs)
+
+
+def _build(docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for d in docs:
         doc_id = guid(d["key"])
@@ -229,15 +240,82 @@ def _seed() -> dict[str, dict[str, Any]]:
     return out
 
 
+# Кто какие документы видит в «Документообороте». "*" — все. Общие документы (ИОТ-044,
+# Положение о СУОТ) видны всем и без этого списка. Кого нет в таблице — источник его не знает.
+DOCFLOW_ACCESS: dict[str, set[str] | str] = {
+    "T-0001": {"prikaz-112", "prikaz-140", "reglament-to"},  # обычный пользователь
+    "T-0002": "*",  # аналитик
+    "T-0003": set(),  # «без доступа к источнику X»
+    "T-0004": "*",  # администратор (права на документы ему тоже даёт источник)
+    "10234": {"prikaz-112", "prikaz-45", "prikaz-140", "prikaz-97", "journal-f3"},  # ОТ и ПБ
+    "00017": "*",  # отдел ИТ
+    "20871": {"prikaz-112", "reglament-to"},  # мастер литейного цеха
+    "31455": set(),  # слесарь: только общие документы
+}
+
+
+def _seed_archive() -> dict[str, dict[str, Any]]:
+    docs = [
+        {
+            "key": "archive-ri-12",
+            "header": {
+                "doc_type": "Инструкция",
+                "number": "РИ-12",
+                "date": "2020-11-23",
+                "title": "Рабочая инструкция машиниста мостового крана",
+                "topic": "Грузоподъёмные механизмы",
+                "description": "Машинист проверяет тормоза и концевые выключатели перед сменой.",
+            },
+            "modified_at": "2021-02-01T08:00:00",
+            "parts": [
+                {
+                    "name": "Проверки перед сменой",
+                    "rows": [
+                        {"Узел": "Тормоза", "Что проверить": "Работу на холостом ходу"},
+                        {"Узел": "Концевые выключатели", "Что проверить": "Срабатывание"},
+                    ],
+                }
+            ],
+        },
+        {
+            "key": "archive-akt-5",
+            "header": {
+                "doc_type": "Акт",
+                "number": "5",
+                "date": "2019-04-12",
+                "title": "Акт проверки знаний стропальщиков",
+                "topic": "Охрана труда",
+                "description": "Комиссия проверила знания 12 стропальщиков литейного цеха № 2.",
+            },
+            "modified_at": "2019-04-12T10:00:00",
+        },
+    ]
+    return _build(docs)
+
+
+ARCHIVE_ACCESS: dict[str, set[str] | str] = {
+    "T-0001": {"archive-ri-12"},
+    "T-0002": "*",
+    "T-0004": "*",
+    "10234": "*",
+    "00017": "*",
+}
+
+
 class FakeSource:
-    def __init__(self) -> None:
+    def __init__(self, seed: Any, access: dict[str, set[str] | str]) -> None:
+        self._seed = seed
+        self._access = access
         self.reset()
 
     def reset(self) -> None:
-        self.docs = _seed()
+        self.docs = self._seed()
         self.unavailable = False
         # Подмена содержимого файла (например, «повредить» файл в тесте).
         self.file_override: dict[str, bytes] = {}
+        self.access = copy.deepcopy(self._access)
+        self.access_delay = 0.0
+        self.access_calls = 0
 
     def id_of(self, key: str) -> str:
         return guid(key)
@@ -254,75 +332,101 @@ class FakeSource:
     def drop(self, key: str) -> None:
         self.docs.pop(guid(key))
 
+    def allowed_ids(self, personnel_number: str) -> list[str] | None:
+        rule = self.access.get(personnel_number)
+        if rule is None:
+            return None
+        if rule == "*":
+            return sorted(self.docs)
+        return sorted(guid(k) for k in rule if guid(k) in self.docs)
+
     def _files(self) -> dict[str, dict[str, Any]]:
         return {f["id"]: f for d in self.docs.values() for f in d["files"]}
 
 
-SOURCE = FakeSource()
-router = APIRouter(prefix="/source", tags=["source"])
-
-
-def _check_up() -> None:
-    if SOURCE.unavailable:
-        raise HTTPException(503, "Источник временно недоступен")
+SOURCE = FakeSource(_seed, DOCFLOW_ACCESS)
+ARCHIVE = FakeSource(_seed_archive, ARCHIVE_ACCESS)
 
 
 def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
 
-@router.get("/documents")
-async def list_documents(
-    modified_since: datetime | None = None,
-    cursor: str | None = None,
-    limit: int = Query(500, ge=1, le=5000),
-) -> dict[str, Any]:
-    _check_up()
-    items = sorted(SOURCE.docs.items(), key=lambda kv: (kv[1]["modified_at"], kv[0]))
-    if modified_since is not None:
-        items = [kv for kv in items if kv[1]["modified_at"] >= modified_since]
-    start = int(cursor or 0)
-    page = items[start : start + limit]
-    nxt = start + limit if start + limit < len(items) else None
-    return {
-        "items": [
-            {"id": k, "modified_at": _iso(d["modified_at"]), "deleted_at": _iso(d["deleted_at"])}
-            for k, d in page
-        ],
-        "next_cursor": str(nxt) if nxt is not None else None,
-    }
+def make_router(state: FakeSource, prefix: str) -> APIRouter:
+    router = APIRouter(prefix=prefix, tags=[prefix.strip("/")])
+
+    def _check_up() -> None:
+        if state.unavailable:
+            raise HTTPException(503, "Источник временно недоступен")
+
+    @router.get("/documents")
+    async def list_documents(
+        modified_since: datetime | None = None,
+        cursor: str | None = None,
+        limit: int = Query(500, ge=1, le=5000),
+    ) -> dict[str, Any]:
+        _check_up()
+        items = sorted(state.docs.items(), key=lambda kv: (kv[1]["modified_at"], kv[0]))
+        if modified_since is not None:
+            items = [kv for kv in items if kv[1]["modified_at"] >= modified_since]
+        start = int(cursor or 0)
+        page = items[start : start + limit]
+        nxt = start + limit if start + limit < len(items) else None
+        return {
+            "items": [
+                {
+                    "id": k,
+                    "modified_at": _iso(d["modified_at"]),
+                    "deleted_at": _iso(d["deleted_at"]),
+                }
+                for k, d in page
+            ],
+            "next_cursor": str(nxt) if nxt is not None else None,
+        }
+
+    @router.get("/documents/{doc_id}")
+    async def get_document(doc_id: str) -> dict[str, Any]:
+        _check_up()
+        d = state.docs.get(doc_id)
+        if d is None:
+            raise HTTPException(404, "Нет такого документа")
+        header = copy.deepcopy(d["header"])
+        header["modified_at"] = _iso(d["modified_at"])
+        header["deleted_at"] = _iso(d["deleted_at"])
+        return {
+            "header": header,
+            "parts": copy.deepcopy(d["parts"]),
+            "files": [{k: v for k, v in f.items() if k != "path"} for f in d["files"]],
+        }
+
+    @router.get("/files/{file_id}", response_model=None)
+    async def get_file(file_id: str) -> Any:
+        _check_up()
+        if file_id in state.file_override:
+            return Response(state.file_override[file_id], media_type="application/octet-stream")
+        f = state._files().get(file_id)
+        if f is None:
+            raise HTTPException(404, "Нет такого файла")
+        return FileResponse(f["path"], media_type=f["mime"], filename=f["name"])
+
+    @router.get("/access/common")
+    async def common_ids() -> dict[str, list[str]]:
+        _check_up()
+        return {"ids": sorted(k for k, d in state.docs.items() if d["common"])}
+
+    @router.get("/access/users/{personnel_number}")
+    async def user_ids(personnel_number: str) -> dict[str, list[str]]:
+        state.access_calls += 1
+        if state.access_delay:
+            await asyncio.sleep(state.access_delay)
+        _check_up()
+        ids = state.allowed_ids(personnel_number)
+        if ids is None:
+            raise HTTPException(404, "Сотрудник не найден")
+        return {"ids": ids}
+
+    return router
 
 
-@router.get("/documents/{doc_id}")
-async def get_document(doc_id: str) -> dict[str, Any]:
-    _check_up()
-    d = SOURCE.docs.get(doc_id)
-    if d is None:
-        raise HTTPException(404, "Нет такого документа")
-    header = copy.deepcopy(d["header"])
-    header["modified_at"] = _iso(d["modified_at"])
-    header["deleted_at"] = _iso(d["deleted_at"])
-    return {
-        "header": header,
-        "parts": copy.deepcopy(d["parts"]),
-        "files": [{k: v for k, v in f.items() if k != "path"} for f in d["files"]],
-    }
-
-
-@router.get("/files/{file_id}", response_model=None)
-async def get_file(file_id: str) -> Any:
-    _check_up()
-    from fastapi.responses import Response
-
-    if file_id in SOURCE.file_override:
-        return Response(SOURCE.file_override[file_id], media_type="application/octet-stream")
-    f = SOURCE._files().get(file_id)
-    if f is None:
-        raise HTTPException(404, "Нет такого файла")
-    return FileResponse(f["path"], media_type=f["mime"], filename=f["name"])
-
-
-@router.get("/access/common")
-async def common_ids() -> dict[str, list[str]]:
-    _check_up()
-    return {"ids": sorted(k for k, d in SOURCE.docs.items() if d["common"])}
+router = make_router(SOURCE, "/source")
+archive_router = make_router(ARCHIVE, "/archive")
