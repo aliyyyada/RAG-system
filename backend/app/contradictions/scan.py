@@ -136,10 +136,6 @@ async def handle_scan(
             return
         if doc.indexed_version is None or doc.contra_version == doc.indexed_version:
             return
-        if doc.legal_status == CANCELLED:
-            # Противоречие с отменённым документом не активно: модель на него не тратим.
-            doc.contra_version, doc.contra_pairs = doc.indexed_version, 0
-            return
         missing = await s.scalar(
             select(exists().where(Chunk.document_id == document_id, Chunk.embedding.is_(None)))
         )
@@ -147,6 +143,12 @@ async def handle_scan(
             raise JobDeferred(60, "ждём векторизацию фрагментов")
         todo, total = await _plan(s, doc, settings)
         version = doc.indexed_version
+        if doc.legal_status == CANCELLED:
+            # Противоречие с отменённым документом не активно: модель на него не тратим.
+            # Уже проверенные пары (из кэша) _plan привязал — в списке они видны как
+            # «неактивные, документ отменён».
+            doc.contra_version, doc.contra_pairs = version, 0
+            return
         captions = {doc.id: caption_for_model(doc)}
         for other in {p.document_a for p in todo} | {p.document_b for p in todo}:
             if other not in captions:
