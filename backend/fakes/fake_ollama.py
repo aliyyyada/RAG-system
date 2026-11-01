@@ -15,6 +15,12 @@
   подразделения, оборудование, участки, «работы на высоте», сроки), связи — по словам
   в том же предложении («ответственным … назначить» → responsible_for).
 
+- **Проверка пары на противоречие (этап 6)**, запрос с `format`, где есть поле verdict:
+  в обоих фрагментах ищутся значения требований — периодичность («1 раз в 3 года»,
+  «не реже одного раза в год») и предельный срок («не более 15 календарных дней»). Если
+  значения одного вида разные, а фрагменты об одном (не меньше двух общих основ слов) —
+  «contradiction» с точными цитатами, иначе «none».
+
 Состояние для тестов — объект FAKE_OLLAMA: prompts (что модель получила: проверяем, что
 текст чужих документов туда не попал), first_token_delay (проверка heartbeat),
 unavailable (Ollama «лежит»), embed_calls, extract_calls, extract_prompts, bad_json.
@@ -115,6 +121,9 @@ class FakeOllamaState:
         self.extract_calls = 0
         self.extract_prompts: list[list[dict[str, str]]] = []
         self.bad_json = False
+        self.contra_calls = 0
+        self.contra_prompts: list[list[dict[str, str]]] = []
+        self.contra_bad_json = False
         self.models = ["qwen2.5:7b-instruct-q4_K_M", "qwen3:4b", "bge-m3:latest"]
 
 
@@ -188,7 +197,7 @@ async def chat(body: dict[str, Any]) -> StreamingResponse:
         raise HTTPException(404, f'model "{model}" not found, try pulling it first')
     messages = body.get("messages") or []
     if body.get("format") is not None:
-        return _structured(model, messages)  # type: ignore[return-value]
+        return _structured(model, messages, body.get("format"))  # type: ignore[return-value]
     FAKE_OLLAMA.prompts.append(messages)
     answer = compose_answer(messages)
     words = re.findall(r"\S+\s*", answer)
@@ -304,7 +313,94 @@ def extract_graph(fragment: str) -> dict[str, Any]:
     return {"entities": entities, "relations": relations}
 
 
-def _structured(model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
+# ---------------------------------------------------------------------------
+# Противоречия (этап 6)
+# ---------------------------------------------------------------------------
+
+_NUM = {"один": 1, "одного": 1, "одному": 1, "два": 2, "двух": 2, "три": 3, "трёх": 3, "трех": 3}
+_UNIT = {"год": "год", "года": "год", "лет": "год", "месяц": "мес", "месяца": "мес"}
+_PERIOD = re.compile(
+    r"(?:не\s+реже\s+)?(\d+|один|одного)\s+раз(?:а)?\s+в\s+(?:(\d+|два|двух|три|трёх|трех)\s+)?"
+    r"(года|год|лет|месяца|месяц)",
+    re.I,
+)
+_TERM = re.compile(r"не\s+более\s+(\d+)\s+(?:календарных\s+)?дней", re.I)
+_GENERIC = {"раз", "год", "года", "лет", "не", "реже", "более", "дней", "кален", "срок", "групп"}
+
+
+def _num(word: str | None) -> int:
+    if not word:
+        return 1
+    return int(word) if word.isdigit() else _NUM.get(word.lower(), 1)
+
+
+def norm_values(fragment: str) -> dict[str, tuple[str, str]]:
+    """{"period": ("1/3 год", цитата), "term": ("15 дней", цитата)} — первые значения."""
+    out: dict[str, tuple[str, str]] = {}
+    m = _PERIOD.search(fragment)
+    if m:
+        unit = _UNIT[m.group(3).lower()]
+        out["period"] = (f"{_num(m.group(1))}/{_num(m.group(2))} {unit}", m.group(0))
+    m = _TERM.search(fragment)
+    if m:
+        out["term"] = (f"{m.group(1)} дней", m.group(0))
+    return out
+
+
+def judge_pair(a: str, b: str) -> dict[str, str]:
+    topical = {
+        x for x in set(stems(a)) & set(stems(b)) if not any(ch.isdigit() for ch in x)
+    } - _GENERIC
+    va, vb = norm_values(a), norm_values(b)
+    for kind, topic in (
+        ("period", "Периодичность обучения и проверки знаний"),
+        ("term", "Срок действия наряда-допуска"),
+    ):
+        if kind in va and kind in vb and va[kind][0] != vb[kind][0] and len(topical) >= 2:
+            return {
+                "verdict": "contradiction",
+                "topic": topic,
+                "explanation": (
+                    f"Документы задают разные значения для одного требования: "
+                    f"«{va[kind][1]}» и «{vb[kind][1]}»."
+                ),
+                "quote_a": va[kind][1],
+                "quote_b": vb[kind][1],
+            }
+    return {
+        "verdict": "none",
+        "topic": "",
+        "explanation": "Требования не пересекаются.",
+        "quote_a": "",
+        "quote_b": "",
+    }
+
+
+def _contradiction(model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
+    FAKE_OLLAMA.contra_calls += 1
+    FAKE_OLLAMA.contra_prompts.append(messages)
+    user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    a = user.split("Фрагмент А:", 1)[-1].split("Документ Б:", 1)[0]
+    b = user.split("Фрагмент Б:", 1)[-1]
+    content = (
+        "{не json"
+        if FAKE_OLLAMA.contra_bad_json
+        else json.dumps(judge_pair(a, b), ensure_ascii=False)
+    )
+    return {
+        "model": model,
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "eval_count": 90,
+        "eval_duration": 90 * 30_000_000,
+        "prompt_eval_count": 700,
+        "prompt_eval_duration": 700 * 2_000_000,
+    }
+
+
+def _structured(model: str, messages: list[dict[str, str]], schema: Any = None) -> dict[str, Any]:
+    if isinstance(schema, dict) and "verdict" in (schema.get("properties") or {}):
+        return _contradiction(model, messages)
     FAKE_OLLAMA.extract_calls += 1
     FAKE_OLLAMA.extract_prompts.append(messages)
     user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AppFlag
 
 GRAPH_LLM_ENABLED = "graph_llm_enabled"
+CONTRA_ENABLED = "contradictions_enabled"
 
 
 async def get_flag(session: AsyncSession, key: str, default: Any = None) -> Any:

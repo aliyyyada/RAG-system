@@ -77,6 +77,8 @@ jobs:
       # Фейковая Ollama внутри фейкового сервиса: эмбеддинги и ответы без видеокарты.
       OLLAMA_URL: http://localhost:11434/ollama
       RERANKER: none
+      # Фейковые эмбеддинги грубее bge-m3 — порог кандидатов в противоречия ниже (этап 6).
+      CONTRA_MIN_SIMILARITY: "0.2"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -105,6 +107,7 @@ jobs:
           nohup uvicorn fakes.fake_service:app --port 11434 > /tmp/fake-ollama.log 2>&1 &
           nohup uvicorn app.main:app --port 8000 > /tmp/app.log 2>&1 &
           python -m app.cli seed-fake-source --url https://localhost:8443/source
+          python -m app.cli contra on
           nohup python -m app.worker.main > /tmp/worker.log 2>&1 &
       - name: Типы и сборка
         working-directory: frontend

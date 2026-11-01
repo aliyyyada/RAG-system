@@ -26,6 +26,9 @@ os.environ.setdefault("DOCUMENT_RETRY_DELAY_SECONDS", "0")
 # (тесты, которым он нужен, подставляют свой через set_reranker_override).
 os.environ.setdefault("OLLAMA_URL", "http://fake-ollama/ollama")
 os.environ.setdefault("RERANKER", "none")
+# Фейковые эмбеддинги грубее bge-m3: близкие по смыслу фрагменты получают близость 0,25–0,6,
+# а не 0,6–0,9. Порог кандидатов в противоречия (этап 6) для тестов ниже.
+os.environ.setdefault("CONTRA_MIN_SIMILARITY", "0.2")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -156,7 +159,8 @@ async def client(database_url: str, clean_auth: None, fake_service_transport):  
 
 RESET_DOCS_SQL = """
 TRUNCATE sources, collections, documents, document_files, chunks, document_events,
-         staging_documents, sync_runs, jobs, llm_queue, entities, app_flags
+         staging_documents, sync_runs, jobs, llm_queue, entities, app_flags,
+         contradiction_checks
          RESTART IDENTITY CASCADE;
 INSERT INTO collections (name, kind, description)
 VALUES ('Ручные загрузки', 'manual', 'Документы, загруженные через интерфейс');
