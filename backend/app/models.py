@@ -1,5 +1,5 @@
 """ORM-модели: очередь (этап 0), пользователи и RBAC (1), документы (2), доступ (3),
-поиск и чат (4)."""
+поиск и чат (4), граф знаний (5)."""
 
 import uuid
 from datetime import datetime
@@ -427,6 +427,12 @@ class Document(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     chunk_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Этап 5. Юридический статус, вычисленный по связям и шапке источника:
+    # «Отменён» (есть действующий документ, который его отменяет, или так сказал источник),
+    # «Действует, изменён» (есть изменяющий документ), иначе — статус из шапки или NULL.
+    legal_status: Mapped[str | None] = mapped_column(String(64))
+    # Версия документа (indexed_version), для которой уже извлечены связи по правилам.
+    links_version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -502,6 +508,11 @@ class Chunk(Base):
     # Вектор bge-m3 (этап 4). NULL — ещё не векторизован (worker, задача chunk_embed).
     # deferred: при обычной выборке фрагментов 1024 числа не тянем.
     embedding: Mapped[list[float] | None] = deferred(mapped_column(Vector(EMBEDDING_DIM)))
+    # Этап 5, извлечение сущностей моделью: NULL — ещё не обработан, done, skipped (фильтр
+    # решил, что модели тут нечего искать), error. graph_ms — сколько заняла модель.
+    graph_state: Mapped[str | None] = mapped_column(String(8))
+    graph_ms: Mapped[int | None] = mapped_column(Integer)
+    graph_note: Mapped[str | None] = mapped_column(String(200))
 
     __table_args__ = (
         CheckConstraint("kind IN ('header', 'text', 'table')", name="ck_chunks_kind"),
@@ -726,3 +737,149 @@ class LlmQueueEntry(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------------------------------------------------------------------------
+# Этап 5: граф знаний
+# ---------------------------------------------------------------------------
+
+LINK_KINDS = ("cancels", "amends", "executes", "refers")
+
+
+class DocumentLink(Base):
+    """Связь «документ → документ», найденная правилами (без модели).
+
+    Пример: во фрагменте приказа № 112 «1.2. Приказ № 45 от 10.01.2022 … признать утратившим
+    силу» → from_document = 112, kind = cancels, target = приказ № 45 (target_document_id,
+    если такой документ есть в реестре; иначе NULL и только реквизиты из текста).
+
+    chunk_id — фрагмент-доказательство: связь видна человеку, только если ему доступен
+    этот фрагмент (и сам целевой документ — иначе показываем лишь реквизиты из текста).
+    Переразобрали документ → фрагменты удалены → связи удалились каскадом и строятся заново.
+    """
+
+    __tablename__ = "document_links"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    from_document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    chunk_id: Mapped[int] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16))
+    target_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    # Реквизиты цели так, как они написаны в тексте: «Приказ», «45», 10.01.2022.
+    target_type: Mapped[str | None] = mapped_column(String(64))
+    target_number: Mapped[str] = mapped_column(String(100))
+    target_number_norm: Mapped[str] = mapped_column(String(100))
+    target_date: Mapped[Any | None] = mapped_column(Date)
+    target_label: Mapped[str] = mapped_column(Text)
+    # Предложение, из которого взята связь (для карточки документа и промпта).
+    quote: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('cancels', 'amends', 'executes', 'refers')", name="ck_document_links_kind"
+        ),
+        Index("ix_document_links_from", "from_document_id"),
+        Index("ix_document_links_target", "target_document_id"),
+        Index("ix_document_links_chunk", "chunk_id"),
+        Index(
+            "ix_document_links_unresolved",
+            "target_number_norm",
+            postgresql_where=text("target_document_id IS NULL"),
+        ),
+    )
+
+
+ENTITY_TYPES = ("person", "position", "department", "equipment", "site", "work", "deadline", "norm")
+
+
+class Entity(Base):
+    """Сущность графа: человек, должность, подразделение, оборудование, участок, вид работ,
+    срок, норматив. Одна запись на (тип, нормализованное имя) — «литейный цех № 2» из разных
+    документов — одна сущность. Видна человеку, только если упомянута хотя бы в одном
+    доступном ему фрагменте (entity_mentions)."""
+
+    __tablename__ = "entities"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    type: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(300))
+    norm_name: Mapped[str] = mapped_column(String(300))
+    name_tsv: Mapped[Any] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('russian', name)", persisted=True)
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ux_entities_type_norm", "type", "norm_name", unique=True),
+        Index("ix_entities_name_tsv", "name_tsv", postgresql_using="gin"),
+    )
+
+
+class EntityMention(Base):
+    """Упоминание сущности во фрагменте — по нему граф фильтруется по правам."""
+
+    __tablename__ = "entity_mentions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    chunk_id: Mapped[int] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"))
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    # Как сущность названа в тексте («Иванову А. С.»), если отличается от имени.
+    surface: Mapped[str | None] = mapped_column(String(300))
+
+    __table_args__ = (
+        Index("ux_entity_mentions", "entity_id", "chunk_id", unique=True),
+        Index("ix_entity_mentions_chunk", "chunk_id"),
+        Index("ix_entity_mentions_document", "document_id"),
+    )
+
+
+RELATION_PREDICATES = (
+    "responsible_for",
+    "holds_position",
+    "belongs_to",
+    "located_at",
+    "has_deadline",
+    "requires",
+    "applies_to",
+)
+
+
+class Relation(Base):
+    """Связь двух сущностей, подтверждённая фрагментом: «Иванова А. С. — ответственный за →
+    работы на высоте» (chunk_id = п. 2.1 приказа № 112). Видна, только если доступен фрагмент."""
+
+    __tablename__ = "relations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    predicate: Mapped[str] = mapped_column(String(32))
+    object_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    chunk_id: Mapped[int] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"))
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    evidence: Mapped[str] = mapped_column(Text, server_default=text("''"))
+
+    __table_args__ = (
+        Index("ux_relations", "subject_id", "predicate", "object_id", "chunk_id", unique=True),
+        Index("ix_relations_subject", "subject_id"),
+        Index("ix_relations_object", "object_id"),
+        Index("ix_relations_chunk", "chunk_id"),
+    )
+
+
+class AppFlag(Base):
+    """Переключатели, которые администратор меняет в интерфейсе, без правки .env.
+
+    graph_llm_enabled — извлечение сущностей моделью (выключено, пока администратор
+    не посмотрел прогноз времени и не включил его на странице «Граф знаний»).
+    """
+
+    __tablename__ = "app_flags"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[str | None] = mapped_column(String(64))

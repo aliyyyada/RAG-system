@@ -58,6 +58,8 @@ class AskContext:
     chat_id: int | None = None
     # Сообщение-ответ, созданное заранее со статусом pending (только для вошедших).
     message_id: int | None = None
+    # Режим поиска (этап 5): chunks / graph / mixed; None — SEARCH_MODE из настроек.
+    mode: str | None = None
 
 
 def source_item(n: int, c: Candidate) -> dict[str, Any]:
@@ -154,12 +156,14 @@ async def answer_stream(ctx: AskContext, settings: Settings) -> AsyncIterator[by
                 ctx.filters,
                 settings,
                 context_query=_context_query(ctx.question, ctx.history),
+                mode=ctx.mode,
             )
         meta.update(
             found=r.found,
             reranked=r.reranked,
             vector_ok=r.vector_ok,
             timings_ms=r.timings_ms,
+            mode=r.mode,
         )
         if not r.vector_ok:
             meta["warning"] = "Поиск по смыслу временно недоступен, искали по словам"
@@ -185,7 +189,10 @@ async def answer_stream(ctx: AskContext, settings: Settings) -> AsyncIterator[by
             yield format_event({"stage": "queue", "position": position}, "status")
         yield format_event({"stage": "generate", "selected": len(used)}, "status")
 
-        messages = build_messages(ctx.question, context, ctx.history)
+        number = {c.chunk_id: i for i, c in enumerate(used, start=1)}
+        facts = [(f.text, number[f.chunk_id]) for f in r.facts if f.chunk_id in number]
+        meta["graph_facts"] = len(facts)
+        messages = build_messages(ctx.question, context, ctx.history, facts)
         t_gen = time.perf_counter()
         stats: dict[str, Any] = {}
         model = None
@@ -253,5 +260,6 @@ def _public(meta: dict[str, Any]) -> dict[str, Any]:
         "tokens_per_second",
         "warning",
         "no_answer",
+        "mode",
     )
     return {k: meta[k] for k in keys if k in meta}

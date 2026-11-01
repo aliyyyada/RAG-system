@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.access.filters import visible
 from app.access.service import DocumentAccess
+from app.graph.status import CANCELLED
 from app.ingest.assemble import HeaderMeta, document_caption
 from app.models import EMBEDDING_DIM, Chunk, Document, Source, Vector
 
@@ -34,9 +35,6 @@ HL_START = "⟦"  # ⟦
 HL_END = "⟧"  # ⟧
 
 _WORD = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
-# Статусы источника, при которых документ не считается действующим. Этап 5 заменит это
-# статусом, вычисленным по связям «отменяет / изменяет».
-INACTIVE_STATUSES = ("отменён", "отменен", "утратил силу", "недействующий", "архив")
 
 
 @dataclass(frozen=True)
@@ -65,8 +63,8 @@ class SearchFilters:
         if self.date_to:
             cond.append(Document.doc_date <= self.date_to)
         if self.only_active:
-            status = func.lower(func.coalesce(Document.header["status"].astext, ""))
-            cond.append(status.not_in(INACTIVE_STATUSES))
+            # Статус вычислен по связям «отменяет» и шапке источника (app/graph/status.py).
+            cond.append(func.coalesce(Document.legal_status, "") != CANCELLED)
         return cond
 
     def as_dict(self) -> dict[str, Any]:
@@ -85,6 +83,8 @@ class Candidate:
     vector_rank: int | None = None
     text_rank: int | None = None
     vector_distance: float | None = None
+    # Место в списке графового поиска (этап 5), если фрагмент нашёл граф.
+    graph_rank: int | None = None
     rrf: float = 0.0
     rerank: float | None = None
     # Заполняется load_details():
@@ -283,7 +283,6 @@ async def load_details(
         if row is None:
             continue
         ch, doc, src, snip = row
-        status = doc.header.get("status") if isinstance(doc.header, dict) else None
         c.document_id = doc.id
         c.text, c.kind = ch.text, ch.kind
         c.section, c.point = ch.section, ch.point
@@ -292,7 +291,7 @@ async def load_details(
             HeaderMeta(doc.number, doc.title, doc.doc_type, doc.topic, doc.doc_date)
         )
         c.source_name = src or "Ручная загрузка"
-        c.legal_status = str(status) if status else None
+        c.legal_status = doc.legal_status
         c.snippet = _clean_snippet(str(snip or ""))
         out.append(c)
     return out

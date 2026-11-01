@@ -143,6 +143,21 @@ class Settings(BaseSettings):
     # Вопрос пользователя — не длиннее (символов).
     question_max_chars: int = Field(default=2000, ge=100, le=20000)
 
+    # ---------- Граф знаний (этап 5) ----------
+    # Режим поиска по умолчанию: chunks — только фрагменты (этап 4), graph — сущности и связи
+    # документов → фрагменты, mixed — оба списка, слитые RRF. Пользователь может выбрать сам.
+    search_mode: Literal["chunks", "graph", "mixed"] = "mixed"
+    # Сколько сущностей, найденных по словам вопроса, и фрагментов графа берём в поиск.
+    graph_entities_limit: int = Field(default=5, ge=1, le=50)
+    graph_candidates: int = Field(default=20, ge=1, le=200)
+    # Извлечение моделью: фрагменты короче этого не отправляем; длиннее — обрезаем.
+    graph_min_chunk_chars: int = Field(default=60, ge=0)
+    graph_chunk_max_chars: int = Field(default=3000, ge=200)
+    # Ответ модели на один фрагмент — не длиннее (токенов): вызов не держит видеокарту долго.
+    graph_max_tokens: int = Field(default=512, ge=64, le=4096)
+    # Фрагментов за один заход задачи graph_extract (дальше задача встаёт в очередь снова).
+    graph_chunks_per_job: int = Field(default=10, ge=1, le=500)
+
     worker_poll_seconds: float = 2.0
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.

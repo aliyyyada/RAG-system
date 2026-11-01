@@ -160,3 +160,48 @@ class Ollama:
                         return
         except httpx.HTTPError as exc:
             raise OllamaUnavailable(f"Ollama недоступна: {type(exc).__name__}") from exc
+
+    async def chat_json(
+        self,
+        messages: list[dict[str, str]],
+        schema: dict[str, Any],
+        *,
+        max_tokens: int,
+        model: str | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Ответ модели строго по JSON-схеме (structured outputs Ollama: поле `format`).
+
+        Для фоновых задач (граф, противоречия): без потока, температура 0. Возвращает
+        разобранный JSON и статистику Ollama (eval_count, eval_duration…)."""
+        s = self.settings
+        name = model or s.llm_model
+        body: dict[str, Any] = {
+            "model": name,
+            "messages": messages,
+            "stream": False,
+            "format": schema,
+            "options": {"num_ctx": s.llm_num_ctx, "temperature": 0, "num_predict": max_tokens},
+        }
+        if name.startswith("qwen3"):
+            body["think"] = False
+        try:
+            r = await self._client.post("/api/chat", json=body)
+        except httpx.HTTPError as exc:
+            raise OllamaUnavailable(f"Ollama недоступна: {type(exc).__name__}") from exc
+        if r.status_code == 404:
+            raise ModelNotFound(f"Модель {name} не загружена в Ollama")
+        if r.status_code >= 500:
+            raise OllamaUnavailable(f"Ollama: HTTP {r.status_code}")
+        if r.status_code != 200:
+            raise OllamaError(f"Ollama: HTTP {r.status_code} {r.text[:200]}")
+        item = r.json()
+        content = (item.get("message") or {}).get("content") or ""
+        stats = {
+            k: item[k]
+            for k in ("eval_count", "eval_duration", "prompt_eval_count", "prompt_eval_duration")
+            if k in item
+        }
+        try:
+            return json.loads(content), stats
+        except ValueError as exc:
+            raise OllamaError("Модель вернула не JSON") from exc

@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.graph import rules as graph_rules
 from app.ingest.pipeline import (
     PRIORITY_CHANGED,
     PRIORITY_RETRY,
@@ -113,6 +114,9 @@ async def set_excluded(
     if doc.is_excluded != excluded:
         doc.is_excluded = excluded
         await add_event(session, doc.id, "excluded" if excluded else "included", actor=actor)
+        # Исключённый документ больше не «отменяет» другие (этап 5).
+        await session.flush()
+        await graph_rules.on_document_gone(session, doc.id)
 
 
 async def processing_rate(session: AsyncSession, source_id: int | None, minutes: int = 30) -> float:

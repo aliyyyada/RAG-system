@@ -62,8 +62,8 @@ class DocumentItem(BaseModel):
     doc_date: date | None
     topic: str | None
     source_name: str
-    # Статус документа так, как его назвал источник («Действует», «Отменён»).
-    # На этапе 5 статус будет вычисляться по связям «отменяет / изменяет».
+    # Статус: «Отменён» / «Действует, изменён» по связям документов (этап 5), иначе — как
+    # его назвал источник («Действует»).
     legal_status: str | None
     is_common: bool
 
@@ -145,7 +145,6 @@ def _unavailable(access: DocumentAccess) -> list[UnavailableOut]:
 
 
 def _item(doc: Document, source_name: str | None) -> dict[str, Any]:
-    status = doc.header.get("status") if isinstance(doc.header, dict) else None
     return {
         "id": doc.id,
         "caption": document_caption(
@@ -157,7 +156,7 @@ def _item(doc: Document, source_name: str | None) -> dict[str, Any]:
         "doc_date": doc.doc_date,
         "topic": doc.topic,
         "source_name": source_name or MANUAL_NAME,
-        "legal_status": str(status) if status else None,
+        "legal_status": doc.legal_status,
         "is_common": doc.is_common,
     }
 

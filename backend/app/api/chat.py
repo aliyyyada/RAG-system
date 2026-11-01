@@ -56,9 +56,13 @@ class FiltersIn(BaseModel):
         return SearchFilters(**self.model_dump())
 
 
+SearchMode = Literal["chunks", "graph", "mixed"]
+
+
 class SearchIn(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     filters: FiltersIn = FiltersIn()
+    mode: SearchMode | None = None
     limit: int = Field(default=10, ge=1, le=50)
 
 
@@ -71,6 +75,8 @@ class AskIn(BaseModel):
     question: str = Field(min_length=1, max_length=20000)
     chat_id: int | None = None
     filters: FiltersIn = FiltersIn()
+    # Режим поиска: chunks — по фрагментам, graph — по связям, mixed — оба (по умолчанию).
+    mode: SearchMode | None = None
     # Только для гостя: его история живёт в браузере. Вошедшим история берётся из БД.
     history: list[HistoryItem] = Field(default_factory=list, max_length=40)
 
@@ -98,7 +104,13 @@ async def search(
 ) -> dict[str, Any]:
     access = await resolve_access(session, principal, settings)
     r = await retrieve(
-        session, access, body.query.strip(), body.filters.to_filters(), settings, top_k=body.limit
+        session,
+        access,
+        body.query.strip(),
+        body.filters.to_filters(),
+        settings,
+        top_k=body.limit,
+        mode=body.mode,
     )
     items = [
         {
@@ -107,6 +119,7 @@ async def search(
             "rerank": c.rerank,
             "vector_rank": c.vector_rank,
             "text_rank": c.text_rank,
+            "graph_rank": c.graph_rank,
         }
         for i, c in enumerate(r.ranked[: body.limit], start=1)
     ]
@@ -127,6 +140,8 @@ async def search(
         "found": r.found,
         "reranked": r.reranked,
         "vector_ok": r.vector_ok,
+        "mode": r.mode,
+        "graph": {"documents": r.graph_documents, "entities": r.graph_entities},
         "highlight": {"start": HL_START, "end": HL_END},
         "unavailable_sources": unavailable_out(access),
     }
@@ -223,6 +238,7 @@ async def ask(
         history=history,
         chat_id=chat.id if chat else None,
         message_id=message_id,
+        mode=body.mode,
     )
     return StreamingResponse(
         with_heartbeat(answer_stream(ctx, settings), settings.sse_heartbeat_seconds),
