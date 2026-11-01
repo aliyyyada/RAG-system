@@ -25,7 +25,7 @@ test('гость видит только общие документы и отк
   await expect(rows(page).filter({ hasText: 'Положение о системе управления охраной труда' })).toHaveCount(1)
 
   await page.getByRole('link', { name: 'Инструкция по охране труда для электросварщика' }).click()
-  await expect(page.getByRole('heading', { name: /Инструкция № ИОТ-044/ })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: /Инструкция № ИОТ-044/ })).toBeVisible()
   await expect(page.getByLabel('Текст документа')).toContainText('электросвар')
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Скачать DOCX' }).click()
