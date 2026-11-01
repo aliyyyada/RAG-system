@@ -478,3 +478,17 @@ async def test_document_filter(
     assert data["items"] == []
     docs = await docs_by_key(fake_source)
     assert docs["prikaz-45"].contra_pairs == 0  # отменён — пропущен
+
+
+def test_excerpt_shows_table_row_with_column_names() -> None:
+    from app.api.contradictions import excerpt
+
+    body = (
+        "4.4. Периодичность обучения по группам безопасности:\n"
+        "| Группа | Кто | Периодичность |\n|---|---|---|\n"
+        "| 1 | Работники в составе бригады | 1 раз в 3 года |\n"
+    )
+    assert excerpt(body, "1 раз в 3 года") == (
+        "4.4. Периодичность обучения по группам безопасности: Группа: 1 · "
+        "Кто: Работники в составе бригады · Периодичность: 1 раз в 3 года"
+    )

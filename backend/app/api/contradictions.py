@@ -191,9 +191,51 @@ def _unavailable(access: DocumentAccess) -> list[UnavailableOut]:
     ]
 
 
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _is_separator(line: str) -> bool:
+    return bool(line.strip()) and set(line.replace("|", "").strip()) <= set("-: ")
+
+
+def _table_row(lines: list[str], i: int) -> str:
+    """Строка таблицы «читаемо»: «Группа: 1 · Кто: Работники … · Периодичность: 1 раз в 3 года»,
+    перед ней — ближайший текст над таблицей («4.4. Периодичность обучения по группам…»)."""
+    j = i
+    while j > 0 and lines[j - 1].lstrip().startswith("|"):
+        j -= 1
+    header = _cells(lines[j]) if j + 1 < len(lines) and _is_separator(lines[j + 1]) else []
+    cells = _cells(lines[i])
+    row = (
+        " · ".join(f"{h}: {c}" for h, c in zip(header, cells, strict=False) if c)
+        if header and j != i
+        else " · ".join(c for c in cells if c)
+    )
+    above = next(
+        (
+            ln.strip()
+            for ln in reversed(lines[:j])
+            if ln.strip() and not ln.lstrip().startswith("|")
+        ),
+        "",
+    )
+    return f"{above} {row}".strip() if above and len(above) <= 160 else row
+
+
 def excerpt(body: str, quote: str, width: int = 360) -> str:
-    """Кусок текста фрагмента вокруг цитаты (вся строка таблицы или предложение)."""
-    flat = " ".join(prepare(body).split())
+    """Отрывок фрагмента вокруг цитаты: строка таблицы с названиями столбцов или
+    предложение (без разметки Markdown — её в карточке противоречия не рендерим)."""
+    lines = [ln for ln in prepare(body).splitlines() if ln.strip()]
+    hit = next((i for i, ln in enumerate(lines) if quote and quote.lower() in ln.lower()), None)
+    if hit is not None and lines[hit].lstrip().startswith("|"):
+        return _table_row(lines, hit)
+    flat = " ".join(
+        " · ".join(c for c in _cells(ln) if c) if ln.lstrip().startswith("|") else ln.lstrip("# ")
+        for ln in lines
+        if not _is_separator(ln)
+    )
+    flat = " ".join(flat.split())
     if len(flat) <= width:
         return flat
     pos = flat.lower().find(quote.lower()) if quote else -1
