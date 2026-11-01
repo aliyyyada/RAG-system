@@ -22,6 +22,10 @@ os.environ.setdefault("APP_ENV", "test")
 # Файлы документов — во временную папку; повтор упавшей задачи — сразу, без минуты ожидания.
 os.environ.setdefault("DOCUMENTS_DIR", tempfile.mkdtemp(prefix="rag-test-docs-"))
 os.environ.setdefault("DOCUMENT_RETRY_DELAY_SECONDS", "0")
+# Ollama — фейковая в памяти (fakes/fake_ollama.py), реранкер по умолчанию выключен
+# (тесты, которым он нужен, подставляют свой через set_reranker_override).
+os.environ.setdefault("OLLAMA_URL", "http://fake-ollama/ollama")
+os.environ.setdefault("RERANKER", "none")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -64,6 +68,22 @@ def database_url() -> Iterator[str]:
         asyncio.run(admin(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
 
 
+@pytest.fixture(autouse=True)
+def fake_ollama():  # type: ignore[no-untyped-def]
+    """Фейковая Ollama для всех тестов: векторизация после разбора документа и ответы чата."""
+    from httpx import ASGITransport
+
+    from app.llm.ollama import set_transport_override
+    from fakes.fake_ollama import FAKE_OLLAMA
+    from fakes.fake_service import app as fake_app
+
+    FAKE_OLLAMA.reset()
+    set_transport_override(ASGITransport(app=fake_app))
+    yield FAKE_OLLAMA
+    set_transport_override(None)
+    FAKE_OLLAMA.reset()
+
+
 @pytest.fixture(scope="session")
 async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     eng = create_async_engine(database_url)
@@ -83,7 +103,7 @@ async def clean_jobs(engine: AsyncEngine) -> None:
 
 RESET_AUTH_SQL = """
 TRUNCATE users, groups, auth_sessions, login_lockouts, login_events, audit_log,
-         user_roles, group_roles, group_members RESTART IDENTITY CASCADE;
+         user_roles, group_roles, group_members, chats, chat_messages RESTART IDENTITY CASCADE;
 DELETE FROM roles WHERE builtin_key IS NULL;
 DELETE FROM role_permissions;
 INSERT INTO role_permissions (role_id, permission)
@@ -136,7 +156,7 @@ async def client(database_url: str, clean_auth: None, fake_service_transport):  
 
 RESET_DOCS_SQL = """
 TRUNCATE sources, collections, documents, document_files, chunks, document_events,
-         staging_documents, sync_runs, jobs RESTART IDENTITY CASCADE;
+         staging_documents, sync_runs, jobs, llm_queue RESTART IDENTITY CASCADE;
 INSERT INTO collections (name, kind, description)
 VALUES ('Ручные загрузки', 'manual', 'Документы, загруженные через интерфейс');
 """

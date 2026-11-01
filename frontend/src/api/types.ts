@@ -296,6 +296,7 @@ export interface UserDocumentList {
 
 export interface DocumentFilters {
   sources: { value: string; label: string }[]
+  collections: { value: string; label: string }[]
   doc_types: string[]
   unavailable_sources: UnavailableSource[]
 }
@@ -333,4 +334,55 @@ export interface ManualDocumentAccess {
   users: { id: number; personnel_number: string; full_name: string }[]
   groups: { id: number; name: string }[]
   all_groups: { id: number; name: string }[]
+}
+
+// ---------- Поиск и чат (этап 4) ----------
+
+export interface SearchFiltersIn {
+  source?: string | null
+  collection_id?: number | null
+  doc_type?: string | null
+  date_from?: string | null
+  date_to?: string | null
+  only_active?: boolean
+}
+
+/** Источник ответа: номер [n] в тексте ответа = n. */
+export interface AnswerSource {
+  n: number
+  document_id?: number
+  chunk_id?: number
+  caption: string
+  place?: string
+  source_name?: string
+  legal_status?: string | null
+  /** Отрывок; найденные слова обрамлены ⟦ и ⟧. */
+  snippet?: string
+  score?: number
+  cited: boolean
+  /** false — права на документ с тех пор отозваны (только в истории). */
+  available?: boolean
+}
+
+export interface ChatItem {
+  id: number
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ChatMessageOut {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  sources: AnswerSource[]
+  status: 'pending' | 'done' | 'error' | 'interrupted'
+  meta: Record<string, unknown>
+  feedback: number | null
+  created_at: string
+}
+
+export interface ChatOut extends ChatItem {
+  messages: ChatMessageOut[]
+  history_days: number
 }

@@ -36,7 +36,9 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - name: Tesseract OCR (rus+eng) — для тестов распознавания сканов
         run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr tesseract-ocr-rus
-      - run: pip install -r requirements-dev.txt
+      - run: |
+          pip install -r requirements-dev.txt
+          pip install --no-deps -r requirements-nodeps.txt
       - name: Ruff
         run: |
           ruff check . ../scripts/bench
@@ -72,6 +74,9 @@ jobs:
       DOCUMENTS_DIR: /tmp/rag-documents
       WORKER_POLL_SECONDS: "0.5"
       DOCUMENT_RETRY_DELAY_SECONDS: "1"
+      # Фейковая Ollama внутри фейкового сервиса: эмбеддинги и ответы без видеокарты.
+      OLLAMA_URL: http://localhost:11434/ollama
+      RERANKER: none
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -90,11 +95,14 @@ jobs:
         working-directory: backend
         run: |
           pip install -r requirements.txt
+          pip install --no-deps -r requirements-nodeps.txt
           ../scripts/dev-cert.sh
           alembic upgrade head
           python -m app.cli seed-test-users
           nohup uvicorn fakes.fake_service:app --port 8443 \
             --ssl-certfile ../certs/server.crt --ssl-keyfile ../certs/server.key > /tmp/fake.log 2>&1 &
+          # Фейковая Ollama — по обычному HTTP, как настоящая Ollama внутри сети docker.
+          nohup uvicorn fakes.fake_service:app --port 11434 > /tmp/fake-ollama.log 2>&1 &
           nohup uvicorn app.main:app --port 8000 > /tmp/app.log 2>&1 &
           python -m app.cli seed-fake-source --url https://localhost:8443/source
           nohup python -m app.worker.main > /tmp/worker.log 2>&1 &
@@ -112,7 +120,7 @@ jobs:
           npx playwright test
       - name: Отчёт Playwright и логи при ошибке
         if: failure()
-        run: cat /tmp/app.log /tmp/fake.log /tmp/worker.log /tmp/vite.log || true
+        run: cat /tmp/app.log /tmp/fake.log /tmp/fake-ollama.log /tmp/worker.log /tmp/vite.log || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

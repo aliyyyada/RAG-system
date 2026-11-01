@@ -49,13 +49,18 @@ done
 docker run --rm -v "$MODELS_VOL:/models:ro" -v "$OUT:/out" alpine:3.22 \
   tar -C /models -cf /out/ollama-models.tar .
 
+echo "==> Реранкер bge-reranker-v2-m3 (ONNX, int8) — работает на CPU в контейнере app"
+./scripts/offline/export-reranker.sh "$OUT/reranker"
+tar -C "$OUT/reranker" -cf "$OUT/reranker-model.tar" .
+rm -rf "$OUT/reranker"
+
 echo "==> Копирование файлов установки"
 cp docker-compose.yml docker-compose.cpu.yml .env.example "$OUT/"
 cp -r scripts docs "$OUT/"
 mkdir -p "$OUT/certs" && cp certs/README.md "$OUT/certs/"
 cp README.md "$OUT/"
 echo "$VERSION" > "$OUT/VERSION"
-(cd "$OUT" && sha256sum images.tar ollama-models.tar > SHA256SUMS)
+(cd "$OUT" && sha256sum images.tar ollama-models.tar reranker-model.tar > SHA256SUMS)
 
 echo "==> Готово: $OUT ($(du -sh "$OUT" | cut -f1))"
 echo "    Перенесите папку на сервер завода и запустите scripts\\offline\\install.ps1"

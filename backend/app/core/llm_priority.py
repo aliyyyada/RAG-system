@@ -39,8 +39,23 @@ async def user_llm_activity(conn: AsyncConnection) -> AsyncIterator[None]:
         await conn.execute(text("SELECT pg_advisory_unlock_shared(:k)"), {"k": LLM_LOCK_KEY})
 
 
-async def background_llm_allowed(conn: AsyncConnection) -> bool:
-    """True, если сейчас ни один пользователь не ждёт ответа LLM."""
+async def background_llm_allowed(conn: AsyncConnection, queue_stale_seconds: int = 30) -> bool:
+    """True, если сейчас ни один пользователь не ждёт ответа LLM.
+
+    «Ждёт» — это и генерация ответа (разделяемая блокировка), и стояние в очереди к модели
+    (живая запись в llm_queue, этап 4): иначе worker влезал бы между ответами двум людям.
+    """
+    waiting = (
+        await conn.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM llm_queue "
+                "WHERE heartbeat_at > now() - make_interval(secs => :s))"
+            ),
+            {"s": queue_stale_seconds},
+        )
+    ).scalar_one()
+    if waiting:
+        return False
     got = (
         await conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": LLM_LOCK_KEY})
     ).scalar_one()

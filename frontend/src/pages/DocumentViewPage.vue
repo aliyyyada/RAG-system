@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import StateBlock from '@/components/StateBlock.vue'
 import FormError from '@/components/ui/FormError.vue'
@@ -13,6 +13,7 @@ import { formatSize, plural } from '@/utils/format'
 // Просмотр документа по макету doc. Открывается из списка или по ссылке на источник
 // в ответе (этап 4): /documents/12?chunk=345 — страница прокручена к фрагменту, он выделен.
 const route = useRoute()
+const router = useRouter()
 const id = computed(() => Number(route.params.id))
 
 const MAX_CHUNK_PAGES = 20 // 20 × 500 фрагментов — с запасом для самого длинного документа
@@ -138,7 +139,8 @@ const fileKind = (mime: string) => (mime.includes('pdf') ? 'PDF' : 'DOCX')
 
   <template v-else-if="doc">
     <div class="doc-toolbar">
-      <RouterLink class="btn btn-ghost btn-sm" :to="{ name: 'documents' }"><AppIcon name="back" />К списку</RouterLink>
+      <button v-if="route.query.from === 'chat'" class="btn btn-ghost btn-sm" type="button" @click="router.back()"><AppIcon name="back" />К ответу</button>
+      <RouterLink v-else class="btn btn-ghost btn-sm" :to="{ name: 'documents' }"><AppIcon name="back" />К списку</RouterLink>
       <div class="grow">
         <h1 class="doc-title">
           {{ headerLine.title }} <span v-if="headerLine.subtitle" class="muted">{{ headerLine.subtitle }}</span>

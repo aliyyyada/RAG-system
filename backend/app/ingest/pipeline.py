@@ -38,6 +38,7 @@ from app.ingest.files import MIME, parse_file
 from app.ingest.parsed import ParsedFile
 from app.ingest.storage import FileStore
 from app.models import Chunk, Document, DocumentEvent, DocumentFile, Source, StagingDocument
+from app.search.indexer import enqueue_embedding
 from app.sources import open_source
 from app.sources.base import (
     BadSourceData,
@@ -415,6 +416,8 @@ async def _store(
                     StagingDocument.external_id == doc.external_id,
                 )
             )
+        # Этап 4: новые фрагменты без векторов — в очередь на векторизацию (bge-m3).
+        await enqueue_embedding(s, document_id)
         warnings = [w for f in prepared.files for w in f.parsed.warnings]
         await add_event(
             s,

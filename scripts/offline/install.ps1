@@ -13,11 +13,11 @@ Write-Host "Папка пакета: $Bundle"
 $version = (Get-Content VERSION).Trim()
 $ollamaImage = Get-Content images.txt | Where-Object { $_ -like "ollama/ollama:*" } | Select-Object -First 1
 
-Step "1/8 Проверка Docker"
+Step "1/9 Проверка Docker"
 docker version --format "{{.Server.Version}}" *> $null
 if ($LASTEXITCODE -ne 0) { Fail "Docker не запущен. Запустите Docker и дождитесь, пока он будет готов." }
 
-Step "2/8 Файл настроек .env"
+Step "2/9 Файл настроек .env"
 if (-not (Test-Path .env)) {
   Copy-Item .env.example .env
   Write-Host "Создан .env из шаблона. Сейчас откроется Блокнот: задайте POSTGRES_PASSWORD," -ForegroundColor Yellow
@@ -43,12 +43,12 @@ if ($envText -match "(?m)^APP_VERSION=.*$") { $envText = $envText -replace "(?m)
 else { $envText = $envText.TrimEnd() + "`r`nAPP_VERSION=$version`r`n" }
 Set-Content -Path .env -Value $envText -NoNewline -Encoding ascii
 
-Step "3/8 Сертификат"
+Step "3/9 Сертификат"
 if (-not ((Test-Path certs\server.crt) -and (Test-Path certs\server.key))) {
   Fail "Нет certs\server.crt и certs\server.key. Положите сертификат от администраторов (см. certs\README.md)."
 }
 
-Step "4/8 Проверка целостности файлов пакета"
+Step "4/9 Проверка целостности файлов пакета"
 foreach ($line in Get-Content SHA256SUMS) {
   $hash, $file = $line -split "\s+", 2
   $file = $file.Trim().TrimStart("*")
@@ -57,23 +57,29 @@ foreach ($line in Get-Content SHA256SUMS) {
 }
 Write-Host "Файлы целы."
 
-Step "5/8 Загрузка Docker-образов (несколько минут)"
+Step "5/9 Загрузка Docker-образов (несколько минут)"
 docker load -i images.tar
 if ($LASTEXITCODE -ne 0) { Fail "Не удалось загрузить образы." }
 
-Step "6/8 Проверка видеокарты в Docker"
+Step "6/9 Проверка видеокарты в Docker"
 docker run --rm --gpus all --entrypoint nvidia-smi $ollamaImage
 if ($LASTEXITCODE -ne 0) {
   Write-Host "Внимание: Docker не видит видеокарту. Модели будут работать на CPU очень медленно." -ForegroundColor Yellow
 }
 
-Step "7/8 Загрузка моделей Ollama"
+Step "7/9 Загрузка моделей Ollama"
 docker volume create rag_ollama_models | Out-Null
 docker run --rm -v rag_ollama_models:/root/.ollama -v "${Bundle}:/bundle:ro" --entrypoint tar $ollamaImage `
   -C /root/.ollama -xf /bundle/ollama-models.tar
 if ($LASTEXITCODE -ne 0) { Fail "Не удалось распаковать модели." }
 
-Step "8/8 Запуск системы"
+Step "8/9 Модель реранкера (уточняет порядок найденных фрагментов)"
+docker volume create rag_reranker_model | Out-Null
+docker run --rm -v rag_reranker_model:/models -v "${Bundle}:/bundle:ro" --entrypoint tar $ollamaImage `
+  -C /models -xf /bundle/reranker-model.tar
+if ($LASTEXITCODE -ne 0) { Fail "Не удалось распаковать модель реранкера." }
+
+Step "9/9 Запуск системы"
 docker compose up -d --no-build
 if ($LASTEXITCODE -ne 0) { Fail "docker compose up завершился с ошибкой. Логи: docker compose logs" }
 

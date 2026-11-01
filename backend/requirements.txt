@@ -11,8 +11,6 @@ pydantic-settings==2.16.2
 httpx==0.28.1
 argon2-cffi==25.1.0
 PyJWT==2.15.1
-argon2-cffi==25.1.0
-PyJWT==2.15.1
 # Этап 2: разбор документов
 pdfplumber==0.11.10
 pdfminer.six==20260107
@@ -22,3 +20,10 @@ python-docx==1.2.0
 lxml==6.1.3
 python-multipart==0.0.33
 tzdata==2026.6
+# Этап 4: реранкер bge-reranker-v2-m3 на CPU (onnxruntime — MIT, numpy — BSD,
+# flatbuffers — Apache-2.0, protobuf — BSD). tokenizers — в requirements-nodeps.txt.
+onnxruntime==1.31.1
+numpy==2.5.4
+flatbuffers==25.12.19
+protobuf==7.36.2
+packaging==26.3

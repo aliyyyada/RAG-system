@@ -1,0 +1,4 @@
+# Ставятся с pip install --no-deps (Dockerfile, CI).
+# tokenizers (Apache-2.0) тянет за собой huggingface_hub → tqdm (MPL-2.0), а нам нужен
+# только разбор tokenizer.json из локальной папки, без скачивания моделей из интернета.
+tokenizers==0.23.3

@@ -16,6 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Job
 
 
+class JobDeferred(Exception):  # noqa: N818 — это не ошибка, а «попробуй позже»
+    """Задачу нужно отложить, не тратя попытку (например, пользователь ждёт ответа LLM)."""
+
+    def __init__(self, seconds: float, reason: str = "") -> None:
+        super().__init__(reason)
+        self.seconds = seconds
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class ClaimedJob:
     id: int
@@ -112,6 +121,21 @@ async def mark_failed(
             """
         ),
         {"id": job_id, "error": error[:4000], "delay": retry_delay_seconds},
+    )
+
+
+async def defer(session: AsyncSession, job_id: int, seconds: float, reason: str = "") -> None:
+    """Вернуть задачу в очередь через `seconds` секунд; попытка не засчитывается."""
+    await session.execute(
+        text(
+            """
+            UPDATE jobs SET status = 'queued', attempts = GREATEST(attempts - 1, 0),
+                run_after = now() + make_interval(secs => :delay),
+                locked_at = NULL, locked_by = NULL, last_error = :reason
+            WHERE id = :id
+            """
+        ),
+        {"id": job_id, "delay": seconds, "reason": (reason or None) and reason[:4000]},
     )
 
 
