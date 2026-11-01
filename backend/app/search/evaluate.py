@@ -11,6 +11,10 @@ recall@5 = доля ожидаемых документов, попавших в
 
 Запуск: `python -m app.cli eval-search --file eval/questions.json` — до и после изменения
 поиска (другой размер фрагмента, реранкер, веса), чтобы видеть, стало лучше или хуже.
+
+Этап 5: у вопроса может быть `"kind": "graph"` — вопрос о связях («что отменило приказ 45»).
+`--mode all` сравнивает режимы chunks / graph / mixed: общий recall и recall отдельно
+по обычным вопросам и по вопросам о связях.
 """
 
 import json
@@ -38,10 +42,20 @@ class QuestionResult:
     found: list[str]
     recall: dict[int, float]
     rank: int | None
+    kind: str = "text"
+
+
+def _summary(results: list[QuestionResult]) -> dict[str, Any]:
+    n = len(results) or 1
+    return {
+        "questions": len(results),
+        "recall": {k: round(sum(r.recall[k] for r in results) / n, 3) for k in KS},
+        "mrr": round(sum(1 / r.rank for r in results if r.rank) / n, 3),
+    }
 
 
 async def evaluate(
-    session: AsyncSession, data: dict[str, Any], settings: Settings
+    session: AsyncSession, data: dict[str, Any], settings: Settings, mode: str | None = None
 ) -> dict[str, Any]:
     login = data.get("as_user")
     user = await session.scalar(select(User).where(User.personnel_number == login))
@@ -54,7 +68,7 @@ async def evaluate(
     results: list[QuestionResult] = []
     for item in data["questions"]:
         r = await retrieve(
-            session, access, item["question"], SearchFilters(), settings, top_k=max(KS)
+            session, access, item["question"], SearchFilters(), settings, top_k=max(KS), mode=mode
         )
         docs: list[str] = []
         for c in r.ranked:
@@ -64,13 +78,19 @@ async def evaluate(
         expected = [str(x) for x in item["expected_numbers"]]
         recall = {k: len(set(expected) & set(docs[:k])) / len(expected) for k in KS}
         rank = next((i for i, d in enumerate(docs, start=1) if d in expected), None)
-        results.append(QuestionResult(item["question"], expected, docs[:10], recall, rank))
+        results.append(
+            QuestionResult(
+                item["question"], expected, docs[:10], recall, rank, item.get("kind", "text")
+            )
+        )
 
-    n = len(results) or 1
     return {
-        "questions": len(results),
-        "recall": {k: round(sum(r.recall[k] for r in results) / n, 3) for k in KS},
-        "mrr": round(sum(1 / r.rank for r in results if r.rank) / n, 3),
+        "mode": mode or settings.search_mode,
+        **_summary(results),
+        "by_kind": {
+            kind: _summary([r for r in results if r.kind == kind])
+            for kind in sorted({r.kind for r in results})
+        },
         "misses": [
             {"question": r.question, "expected": r.expected, "found": r.found}
             for r in results

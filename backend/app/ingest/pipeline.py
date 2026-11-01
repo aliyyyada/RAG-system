@@ -30,6 +30,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.graph import rules as graph_rules
 from app.ingest.assemble import assemble_header, header_meta
 from app.ingest.blocks import Block
 from app.ingest.chunker import ChunkDraft, chunk_blocks
@@ -113,6 +114,9 @@ async def soft_delete(session: AsyncSession, doc: Document, reason: str) -> bool
         set_status(doc, "ready" if doc.indexed_version else "error")
     doc.updated_at = now()
     await add_event(session, doc.id, "deleted", doc.version, reason=reason)
+    # Удалённый документ больше не «отменяет» другие (этап 5).
+    await session.flush()
+    await graph_rules.on_document_gone(session, doc.id)
     return True
 
 
@@ -418,6 +422,8 @@ async def _store(
             )
         # Этап 4: новые фрагменты без векторов — в очередь на векторизацию (bge-m3).
         await enqueue_embedding(s, document_id)
+        # Этап 5: связи «отменяет / изменяет» по правилам и статус документа.
+        await graph_rules.enqueue_rules(s, document_id)
         warnings = [w for f in prepared.files for w in f.parsed.warnings]
         await add_event(
             s,

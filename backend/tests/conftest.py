@@ -156,7 +156,8 @@ async def client(database_url: str, clean_auth: None, fake_service_transport):  
 
 RESET_DOCS_SQL = """
 TRUNCATE sources, collections, documents, document_files, chunks, document_events,
-         staging_documents, sync_runs, jobs, llm_queue RESTART IDENTITY CASCADE;
+         staging_documents, sync_runs, jobs, llm_queue, entities, app_flags
+         RESTART IDENTITY CASCADE;
 INSERT INTO collections (name, kind, description)
 VALUES ('Ручные загрузки', 'manual', 'Документы, загруженные через интерфейс');
 """

@@ -10,9 +10,14 @@
   общих основ с вопросом. Нашёлся — отвечает первым подходящим предложением со ссылкой [n].
   Не нашёлся — «В доступных вам документах ответа…». Вопрос без букв («2+2») — отказ.
 
+- **Извлечение для графа (этап 5)**, запрос с `format` (JSON-схема): сущности находятся
+  регулярными выражениями по словарю фейковых документов (люди «Фамилия И. О.», должности,
+  подразделения, оборудование, участки, «работы на высоте», сроки), связи — по словам
+  в том же предложении («ответственным … назначить» → responsible_for).
+
 Состояние для тестов — объект FAKE_OLLAMA: prompts (что модель получила: проверяем, что
 текст чужих документов туда не попал), first_token_delay (проверка heartbeat),
-unavailable (Ollama «лежит»), embed_calls.
+unavailable (Ollama «лежит»), embed_calls, extract_calls, extract_prompts, bad_json.
 """
 
 import asyncio
@@ -107,6 +112,9 @@ class FakeOllamaState:
         self.token_delay = 0.0
         self.unavailable = False
         self.embed_calls = 0
+        self.extract_calls = 0
+        self.extract_prompts: list[list[dict[str, str]]] = []
+        self.bad_json = False
         self.models = ["qwen2.5:7b-instruct-q4_K_M", "qwen3:4b", "bge-m3:latest"]
 
 
@@ -146,6 +154,16 @@ def compose_answer(messages: list[dict[str, str]]) -> str:
     if not re.search(r"[a-zа-яё]{3,}", question.lower()):
         return OFF_TOPIC
     q = set(stems(question))
+    # Справка графа (этап 5): «- Приказ № 112 … отменяет Приказ № 45 … [1]». Если связь
+    # подходит к вопросу лучше фрагментов — отвечаем ей, как сделала бы настоящая модель.
+    head = system.split("Фрагменты:", 1)[0]
+    if "графа знаний" in head:
+        facts = re.findall(r"^- (.+?) \[(\d+)\]$", head, re.M)
+        scored = [(len(q & set(stems(t))), t, n) for t, n in facts]
+        scored = [x for x in scored if x[0] >= 2]
+        if scored:
+            _, fact, n = max(scored, key=lambda x: x[0])
+            return f"По документам: {fact} [{n}]"
     fragments = system.split("Фрагменты:", 1)[-1]
     best: tuple[int, int, str] | None = None
     for m in _FRAGMENT.finditer(fragments):
@@ -169,6 +187,8 @@ async def chat(body: dict[str, Any]) -> StreamingResponse:
     if model not in FAKE_OLLAMA.models:
         raise HTTPException(404, f'model "{model}" not found, try pulling it first')
     messages = body.get("messages") or []
+    if body.get("format") is not None:
+        return _structured(model, messages)  # type: ignore[return-value]
     FAKE_OLLAMA.prompts.append(messages)
     answer = compose_answer(messages)
     words = re.findall(r"\S+\s*", answer)
@@ -200,3 +220,106 @@ async def chat(body: dict[str, Any]) -> StreamingResponse:
         ).encode()
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+# ---------------------------------------------------------------------------
+# Извлечение сущностей (этап 5)
+# ---------------------------------------------------------------------------
+
+_SURNAMES = {"Иванову": "Иванова", "Петрова": "Петров", "Смирнова": "Смирнов"}
+_PATTERNS: list[tuple[str, re.Pattern[str], Any]] = [
+    ("person", re.compile(r"([А-ЯЁ][а-яё]{2,})\s+([А-ЯЁ])\.\s?([А-ЯЁ])\."), None),
+    (
+        "position",
+        re.compile(r"начальник\w*\s+службы\s+ОТ\s+и\s+ПБ", re.I),
+        "начальник службы ОТ и ПБ",
+    ),
+    ("position", re.compile(r"мастер\w*\s+участка", re.I), "мастер участка"),
+    ("position", re.compile(r"главн\w+\s+инженер\w*", re.I), "главный инженер"),
+    (
+        "position",
+        re.compile(r"ответственн\w+\s+руководител\w+\s+работ", re.I),
+        "ответственный руководитель работ",
+    ),
+    ("department", re.compile(r"служб\w+\s+ОТ\s+и\s+ПБ", re.I), "служба ОТ и ПБ"),
+    ("department", re.compile(r"литейн\w+\s+цех\w*\s+№\s*(\d+)", re.I), "литейный цех № {0}"),
+    ("equipment", re.compile(r"кран\w*\s+мостов\w+\s+(КМ-\d+)", re.I), "кран мостовой {0}"),
+    ("equipment", re.compile(r"сварочн\w+\s+аппарат\w*", re.I), "сварочный аппарат"),
+    ("site", re.compile(r"\bучасток\s+(\d+)", re.I), "участок {0}"),
+    ("work", re.compile(r"работ\w*\s+на\s+высоте", re.I), "работы на высоте"),
+    (
+        "deadline",
+        re.compile(r"не\s+более\s+(\d+)\s+(?:календарных\s+)?дней", re.I),
+        "не более {0} дней",
+    ),
+]
+
+
+def _entities_in(sentence: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for etype, pat, template in _PATTERNS:
+        for m in pat.finditer(sentence):
+            if etype == "person":
+                name = f"{_SURNAMES.get(m.group(1), m.group(1))} {m.group(2)}. {m.group(3)}."
+            else:
+                name = str(template).format(*m.groups())
+            if (etype, name) not in out:
+                out.append((etype, name))
+    return out
+
+
+def extract_graph(fragment: str) -> dict[str, Any]:
+    entities: list[dict[str, str]] = []
+    relations: list[dict[str, str]] = []
+    for sentence in re.split(r"(?<![А-ЯЁ]\.)(?<=[.!?])\s+(?=[А-ЯЁ0-9])|\n+", fragment):
+        found = _entities_in(sentence)
+        for etype, name in found:
+            if {"type": etype, "name": name} not in entities:
+                entities.append({"type": etype, "name": name})
+        of = {
+            t: [n for tt, n in found if tt == t]
+            for t in ("person", "position", "department", "equipment", "site", "work", "deadline")
+        }
+        low = sentence.lower()
+        if "ответствен" in low or "возложить" in low:
+            actors = of["person"] or of["position"]
+            targets = of["work"] or of["department"] or of["equipment"]
+            for a in actors:
+                for t in targets:
+                    relations.append({"subject": a, "predicate": "responsible_for", "object": t})
+        for p in of["person"]:
+            for pos in of["position"]:
+                if pos != "ответственный руководитель работ" or len(of["position"]) == 1:
+                    relations.append({"subject": p, "predicate": "holds_position", "object": pos})
+        for pos in of["position"]:
+            for d in of["department"]:
+                if "службы" in pos and "служба" in d:
+                    relations.append({"subject": pos, "predicate": "belongs_to", "object": d})
+        for e in of["equipment"]:
+            for site in of["site"]:
+                relations.append({"subject": e, "predicate": "located_at", "object": site})
+        for w in of["work"]:
+            for dl in of["deadline"]:
+                relations.append({"subject": w, "predicate": "has_deadline", "object": dl})
+    return {"entities": entities, "relations": relations}
+
+
+def _structured(model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
+    FAKE_OLLAMA.extract_calls += 1
+    FAKE_OLLAMA.extract_prompts.append(messages)
+    user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    fragment = user.split("Фрагмент:", 1)[-1]
+    content = (
+        "{не json"
+        if FAKE_OLLAMA.bad_json
+        else json.dumps(extract_graph(fragment), ensure_ascii=False)
+    )
+    return {
+        "model": model,
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "eval_count": 120,
+        "eval_duration": 120 * 30_000_000,
+        "prompt_eval_count": 600,
+        "prompt_eval_duration": 600 * 2_000_000,
+    }

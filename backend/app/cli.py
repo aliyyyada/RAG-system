@@ -237,8 +237,10 @@ async def sync_source(code: str, reconcile: bool) -> str:
     return f"{what} поставлена в очередь" if queued else f"{what} уже стоит в очереди"
 
 
-async def eval_search(path: str, as_user: str | None) -> str:
-    """Оценка качества поиска: recall@k по набору вопросов (app/search/evaluate.py)."""
+async def eval_search(path: str, as_user: str | None, mode: str | None = None) -> str:
+    """Оценка качества поиска: recall@k по набору вопросов (app/search/evaluate.py).
+
+    --mode all — сравнение режимов chunks / graph / mixed одной таблицей."""
     import json
     from pathlib import Path
 
@@ -248,9 +250,42 @@ async def eval_search(path: str, as_user: str | None) -> str:
     data = load_questions(Path(path))
     if as_user:
         data["as_user"] = as_user
-    async with get_sessionmaker()() as session:
-        report = await evaluate(session, data, get_settings())
-    return json.dumps(report, ensure_ascii=False, indent=2)
+    if mode != "all":
+        async with get_sessionmaker()() as session:
+            report = await evaluate(session, data, get_settings(), mode)
+        return json.dumps(report, ensure_ascii=False, indent=2)
+    lines = ["режим   | вопросы | recall@1 | recall@5 | MRR   | о связях: recall@5"]
+    for m in ("chunks", "graph", "mixed"):
+        async with get_sessionmaker()() as session:
+            r = await evaluate(session, data, get_settings(), m)
+        graph_part = r["by_kind"].get("graph", {}).get("recall", {}).get(5, "—")
+        lines.append(
+            f"{m:<7} | {r['questions']:>7} | {r['recall'][1]:>8} | {r['recall'][5]:>8} "
+            f"| {r['mrr']:<5} | {graph_part}"
+        )
+    return "\n".join(lines)
+
+
+async def graph_estimate(sample: int) -> str:
+    """Замер времени извлечения сущностей моделью на выборке и прогноз (app/graph/estimate.py)."""
+    from app.config import get_settings
+    from app.graph.estimate import estimate, report
+
+    result = await estimate(get_settings(), get_sessionmaker(), sample=sample, actor="cli")
+    return report(result)
+
+
+async def graph_llm(enabled: bool) -> str:
+    """Включить или выключить извлечение сущностей моделью (то же, что кнопка в админке)."""
+    from app.core.flags import GRAPH_LLM_ENABLED, set_flag
+    from app.graph.extract import backfill_tick
+
+    async with get_sessionmaker()() as session, session.begin():
+        await set_flag(session, GRAPH_LLM_ENABLED, enabled, "cli")
+        n = await backfill_tick(session, limit=100_000) if enabled else 0
+    if enabled:
+        return f"Извлечение моделью включено, в очередь поставлено документов: {n}"
+    return "Извлечение моделью выключено (обработанное остаётся в графе)"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -291,6 +326,17 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("eval-search", help="Оценить качество поиска (recall@k) по набору вопросов")
     p.add_argument("--file", default="eval/questions.json")
     p.add_argument("--as-user", help="От чьего имени искать (по умолчанию as_user из файла)")
+    p.add_argument(
+        "--mode",
+        choices=["chunks", "graph", "mixed", "all"],
+        help="Режим поиска (по умолчанию SEARCH_MODE); all — сравнить все три",
+    )
+
+    p = sub.add_parser("graph-estimate", help="Замерить время извлечения сущностей и дать прогноз")
+    p.add_argument("--sample", type=int, default=20, help="Сколько фрагментов отправить в модель")
+
+    p = sub.add_parser("graph-llm", help="Включить / выключить извлечение сущностей моделью")
+    p.add_argument("state", choices=["on", "off"])
 
     args = parser.parse_args(argv)
 
@@ -317,7 +363,11 @@ def main(argv: list[str] | None = None) -> None:
             if args.cmd == "sync":
                 return await sync_source(args.code, args.reconcile)
             if args.cmd == "eval-search":
-                return await eval_search(args.file, args.as_user)
+                return await eval_search(args.file, args.as_user, args.mode)
+            if args.cmd == "graph-estimate":
+                return await graph_estimate(args.sample)
+            if args.cmd == "graph-llm":
+                return await graph_llm(args.state == "on")
             return await seed_test_users()
         finally:
             await dispose_engine()

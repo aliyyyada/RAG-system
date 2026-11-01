@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
 import { chatApi } from '@/api/chat'
-import type { AnswerSource, ChatItem, ChatOut, SearchFiltersIn, UnavailableSource } from '@/api/types'
+import type { AnswerSource, ChatItem, ChatOut, SearchFiltersIn, SearchMode, UnavailableSource } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 
 /**
@@ -86,6 +86,11 @@ export const useChatStore = defineStore('chat', () => {
   const chats = ref<ChatItem[]>([])
   const historyDays = ref(90)
   const filters = ref<SearchFiltersIn>({})
+  // Режим поиска (этап 5): «Смешанный» по умолчанию; выбор помним в этом браузере.
+  const MODE_KEY = 'rag.search-mode'
+  const savedMode = localStorage.getItem(MODE_KEY)
+  const mode = ref<SearchMode>(savedMode === 'chunks' || savedMode === 'graph' ? savedMode : 'mixed')
+  watch(mode, (m) => localStorage.setItem(MODE_KEY, m))
   const busy = ref(false)
   const loadingChat = ref(false)
   const loadError = ref<string | null>(null)
@@ -195,7 +200,7 @@ export const useChatStore = defineStore('chat', () => {
     const startedNew = chatId.value === null
     try {
       for await (const ev of chatApi.ask(
-        { question: q, chat_id: chatId.value, filters: filters.value, history },
+        { question: q, chat_id: chatId.value, filters: filters.value, history, mode: mode.value },
         controller.signal,
       )) {
         const d = ev.data as Record<string, any>
@@ -270,6 +275,7 @@ export const useChatStore = defineStore('chat', () => {
     chats,
     historyDays,
     filters,
+    mode,
     busy,
     loadingChat,
     loadError,

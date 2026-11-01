@@ -1,6 +1,6 @@
 import { api, streamRequest } from './client'
 import { readSse, type SseEvent } from './sse'
-import type { ChatItem, ChatOut, SearchFiltersIn } from './types'
+import type { ChatItem, ChatOut, SearchFiltersIn, SearchMode } from './types'
 
 export interface AskBody {
   question: string
@@ -8,6 +8,8 @@ export interface AskBody {
   filters?: SearchFiltersIn
   /** Только гость: его история живёт в браузере. */
   history?: { role: 'user' | 'assistant'; content: string }[]
+  /** Режим поиска (этап 5): по фрагментам, по связям или смешанный. */
+  mode?: SearchMode
 }
 
 export const chatApi = {

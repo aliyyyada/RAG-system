@@ -19,6 +19,7 @@ const ADMIN_PAGES: Record<string, () => Promise<unknown>> = {
   'admin-roles': () => import('@/pages/admin/RolesPage.vue'),
   'admin-sources': () => import('@/pages/admin/SourcesPage.vue'),
   'admin-documents': () => import('@/pages/admin/DocumentsPage.vue'),
+  'admin-graph': () => import('@/pages/admin/GraphPage.vue'),
 }
 
 export const ADMIN_SECTIONS = [
@@ -26,6 +27,7 @@ export const ADMIN_SECTIONS = [
   { group: 'Доступ', name: 'admin-roles', path: 'roles', title: 'Роли и права', icon: 'shield', permissions: ['admin.roles'] },
   { group: 'Документы', name: 'admin-sources', path: 'sources', title: 'Источники', icon: 'db', permissions: ['admin.integrations'] },
   { group: 'Документы', name: 'admin-documents', path: 'documents', title: 'Коллекции и документы', icon: 'doc', permissions: ['admin.integrations'] },
+  { group: 'Документы', name: 'admin-graph', path: 'graph', title: 'Граф знаний', icon: 'split', permissions: ['admin.integrations'] },
   { group: 'Система', name: 'admin-audit', path: 'audit', title: 'Журнал аудита', icon: 'list', permissions: ['audit.view'], stage: 7 },
   { group: 'Система', name: 'admin-health', path: 'health', title: 'Состояние системы', icon: 'cpu', permissions: ['admin.integrations'], stage: 7 },
   { group: 'Система', name: 'admin-api-keys', path: 'api-keys', title: 'API-ключи', icon: 'key', permissions: ['admin.integrations'], stage: 7 },

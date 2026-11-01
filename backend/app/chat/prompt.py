@@ -66,12 +66,35 @@ def build_context(selected: list[Candidate], max_chars: int) -> tuple[str, list[
     return "\n\n".join(parts), used
 
 
+def facts_block(facts: list[tuple[str, int]]) -> str:
+    """Справка из графа знаний: «- Приказ № 112 от 14.03.2024 отменяет Приказ № 45 … [2]».
+
+    В справку попадают только связи, подтверждённые фрагментом из этого же промпта
+    (номер [n] — его номер), поэтому модель может на них сослаться, а человек — проверить."""
+    lines: list[str] = []
+    seen: set[str] = set()
+    for text, n in facts:
+        line = f"- {text} [{n}]"
+        if line not in seen:
+            seen.add(line)
+            lines.append(line)
+    return "\n".join(lines[:15])
+
+
 def build_messages(
     question: str,
     context: str,
     history: list[dict[str, str]],
+    facts: list[tuple[str, int]] | None = None,
 ) -> list[dict[str, str]]:
-    system = f"{SYSTEM_RULES}\n\nФрагменты:\n\n{context}"
+    block = facts_block(facts or [])
+    graph = (
+        f"\n\nСвязи документов и сведения графа знаний (каждая подтверждена фрагментом [n]):\n"
+        f"{block}"
+        if block
+        else ""
+    )
+    system = f"{SYSTEM_RULES}{graph}\n\nФрагменты:\n\n{context}"
     msgs = [{"role": "system", "content": system}]
     for h in history:
         if h.get("role") in ("user", "assistant") and h.get("content"):

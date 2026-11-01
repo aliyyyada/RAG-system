@@ -126,7 +126,9 @@ async def test_user_sees_only_documents_allowed_by_source(
     r = await client.get(f"/api/documents/{ids['prikaz-112']}", headers=user)
     card = r.json()
     assert card["caption"].startswith("Приказ № 112 от 14.03.2024")
-    assert card["source_name"] == "Документооборот" and card["legal_status"] == "Действует"
+    assert (
+        card["source_name"] == "Документооборот" and card["legal_status"] == "Действует, изменён"
+    )  # этап 5: приказ № 140 изменяет № 112
     assert {"label": "Подразделение", "value": "Служба ОТ и ПБ"} in card["fields"]
     r = await client.get(f"/api/documents/{ids['prikaz-112']}/chunks", headers=user)
     assert any("наряд" in c["text"].lower() for c in r.json()["items"])
