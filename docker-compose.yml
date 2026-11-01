@@ -15,6 +15,9 @@ x-backend: &backend
     # Сертификаты: CA внешнего сервиса проверки пароля (EXTERNAL_AUTH_CA_FILE)
     # и, если нужен mTLS, клиентский сертификат. Только чтение.
     - ./certs:/srv/certs:ro
+    # Реранкер bge-reranker-v2-m3 (ONNX) — офлайн-установщик заливает его в этот том.
+    # Тома нет или он пустой — поиск работает без реранкера (в журнале предупреждение).
+    - reranker_model:/models/reranker:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -49,7 +52,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          # Реранкер на CPU: ~1 ГБ на модель int8 и её работу.
+          memory: 4g
 
   worker:
     <<: *backend
@@ -133,3 +137,5 @@ volumes:
   ollama_models:
     name: rag_ollama_models  # фиксированное имя: офлайн-установщик заливает в него модели
   documents:
+  reranker_model:
+    name: rag_reranker_model  # фиксированное имя: офлайн-установщик заливает в него модель

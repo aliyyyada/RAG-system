@@ -1,4 +1,5 @@
-"""ORM-модели: очередь (этап 0), пользователи и RBAC (1), документы (2), доступ (3)."""
+"""ORM-модели: очередь (этап 0), пользователи и RBAC (1), документы (2), доступ (3),
+поиск и чат (4)."""
 
 import uuid
 from datetime import datetime
@@ -16,14 +17,52 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    SmallInteger,
     String,
     Table,
     Text,
+    cast,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, deferred, mapped_column, relationship
+from sqlalchemy.types import UserDefinedType
+
+# Размерность векторов bge-m3. Другая модель эмбеддингов = новая миграция и перевекторизация.
+EMBEDDING_DIM = 1024
+
+
+class Vector(UserDefinedType[list[float]]):
+    """Тип pgvector `vector(N)` без отдельной библиотеки: список чисел ↔ текст '[0.1,0.2]'."""
+
+    cache_ok = True
+
+    def __init__(self, dim: int) -> None:
+        self.dim = dim
+
+    def get_col_spec(self, **_: Any) -> str:
+        return f"vector({self.dim})"
+
+    def bind_expression(self, bindvalue: Any) -> Any:
+        # Параметр уходит в PostgreSQL текстом и приводится к vector на стороне БД.
+        return cast(bindvalue, self)
+
+    def bind_processor(self, dialect: Any) -> Any:
+        def process(value: list[float] | None) -> str | None:
+            return None if value is None else to_pgvector(value)
+
+        return process
+
+    def result_processor(self, dialect: Any, coltype: Any) -> Any:
+        def process(value: str | None) -> list[float] | None:
+            return None if value is None else [float(x) for x in value.strip("[]").split(",")]
+
+        return process
+
+
+def to_pgvector(values: list[float]) -> str:
+    return "[" + ",".join(f"{v:.6g}" for v in values) + "]"
 
 
 class Base(DeclarativeBase):
@@ -460,6 +499,9 @@ class Chunk(Base):
     tsv: Mapped[Any] = mapped_column(
         TSVECTOR, Computed("to_tsvector('russian', text)", persisted=True)
     )
+    # Вектор bge-m3 (этап 4). NULL — ещё не векторизован (worker, задача chunk_embed).
+    # deferred: при обычной выборке фрагментов 1024 числа не тянем.
+    embedding: Mapped[list[float] | None] = deferred(mapped_column(Vector(EMBEDDING_DIM)))
 
     __table_args__ = (
         CheckConstraint("kind IN ('header', 'text', 'table')", name="ck_chunks_kind"),
@@ -612,3 +654,75 @@ class DocumentGrant(Base):
             postgresql_where=text("group_id IS NOT NULL"),
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Этап 4: история чатов и очередь к LLM
+# ---------------------------------------------------------------------------
+
+
+class Chat(Base):
+    """Диалог вошедшего пользователя. Гостевой чат на сервере не хранится (только в браузере).
+
+    Хранится CHAT_HISTORY_DAYS дней с последнего вопроса, потом удаляется worker'ом.
+    """
+
+    __tablename__ = "chats"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatMessage(Base):
+    """Вопрос или ответ в диалоге.
+
+    sources — источники ответа в том порядке, в каком их видела модель: номер [1] в тексте
+    ответа = sources[0]. Пример элемента: {"n": 1, "document_id": 3, "chunk_id": 41,
+    "caption": "Приказ № 112 …", "place": "стр. 2, п. 4.2", "snippet": "…", "cited": true}.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    sources: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # pending — ответ ещё пишется; interrupted — пользователь закрыл страницу или нажал «Стоп».
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'done'"))
+    # Время этапов, сколько найдено, фильтры, недоступные источники.
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    # -1 — «Ответ неточный», 1 — «Полезно».
+    feedback: Mapped[int | None] = mapped_column(SmallInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role"),
+        CheckConstraint(
+            "status IN ('pending', 'done', 'error', 'interrupted')",
+            name="ck_chat_messages_status",
+        ),
+        Index("ix_chat_messages_chat", "chat_id", "id"),
+    )
+
+
+class LlmQueueEntry(Base):
+    """Запрос, ждущий модель. Видеокарта одна, ответы идут по одному.
+
+    Место в очереди = сколько живых записей впереди (по priority, затем id).
+    Запись «жива», пока её поток обновляет heartbeat_at; брошенная запись (процесс упал)
+    перестаёт учитываться через LLM_QUEUE_STALE_SECONDS.
+    """
+
+    __tablename__ = "llm_queue"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

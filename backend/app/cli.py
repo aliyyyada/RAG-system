@@ -237,6 +237,22 @@ async def sync_source(code: str, reconcile: bool) -> str:
     return f"{what} поставлена в очередь" if queued else f"{what} уже стоит в очереди"
 
 
+async def eval_search(path: str, as_user: str | None) -> str:
+    """Оценка качества поиска: recall@k по набору вопросов (app/search/evaluate.py)."""
+    import json
+    from pathlib import Path
+
+    from app.config import get_settings
+    from app.search.evaluate import evaluate, load_questions
+
+    data = load_questions(Path(path))
+    if as_user:
+        data["as_user"] = as_user
+    async with get_sessionmaker()() as session:
+        report = await evaluate(session, data, get_settings())
+    return json.dumps(report, ensure_ascii=False, indent=2)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -272,6 +288,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("code")
     p.add_argument("--reconcile", action="store_true", help="Полная сверка вместо инкремента")
 
+    p = sub.add_parser("eval-search", help="Оценить качество поиска (recall@k) по набору вопросов")
+    p.add_argument("--file", default="eval/questions.json")
+    p.add_argument("--as-user", help="От чьего имени искать (по умолчанию as_user из файла)")
+
     args = parser.parse_args(argv)
 
     async def run() -> str:
@@ -296,6 +316,8 @@ def main(argv: list[str] | None = None) -> None:
                 return await source_token(args.code)
             if args.cmd == "sync":
                 return await sync_source(args.code, args.reconcile)
+            if args.cmd == "eval-search":
+                return await eval_search(args.file, args.as_user)
             return await seed_test_users()
         finally:
             await dispose_engine()

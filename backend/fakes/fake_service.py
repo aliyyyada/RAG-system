@@ -3,7 +3,8 @@
 Изображает систему, где уже заведены сотрудники: отвечает на проверку логина и пароля
 (тот же формат, что ждёт ExternalCheckProvider) и отдаёт тестовые документы по протоколу
 источника (/source/... и второй источник /archive/..., см. fakes/fake_source.py) вместе со
-списками документов, доступных каждому сотруднику.
+списками документов, доступных каждому сотруднику. Ещё здесь фейковая Ollama
+(/ollama/..., fakes/fake_ollama.py) — для CI и разработки без видеокарты.
 
 Запуск в docker compose — сервис `fake-service` (профиль dev), по HTTPS с dev-сертификатом.
 В prod не запускается (ENABLE_TEST_USERS=false и профиль dev выключен).
@@ -15,6 +16,7 @@ import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from fakes.fake_ollama import router as ollama_router
 from fakes.fake_source import archive_router
 from fakes.fake_source import router as source_router
 
@@ -61,6 +63,8 @@ class CheckRequest(BaseModel):
 app = FastAPI(title="Фейковый внешний сервис (разработка)", docs_url="/docs")
 app.include_router(source_router)
 app.include_router(archive_router)
+# Фейковая Ollama (/ollama/api/...): CI и разработка без видеокарты, OLLAMA_URL=…/ollama
+app.include_router(ollama_router)
 
 
 @app.get("/health")

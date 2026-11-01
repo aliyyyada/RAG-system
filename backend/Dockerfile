@@ -16,8 +16,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements.txt requirements-nodeps.txt ./
+RUN pip install -r requirements.txt && pip install --no-deps -r requirements-nodeps.txt
 
 COPY alembic.ini pyproject.toml ./
 COPY migrations ./migrations
@@ -26,7 +26,7 @@ COPY app ./app
 COPY fakes ./fakes
 
 RUN useradd --system --uid 10001 --home-dir /srv appuser \
-    && mkdir -p /data/documents && chown appuser /data/documents
+    && mkdir -p /data/documents /models/reranker && chown appuser /data/documents
 USER appuser
 
 EXPOSE 8000

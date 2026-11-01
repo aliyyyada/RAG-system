@@ -26,7 +26,7 @@ from app.auth.deps import SessionDep, SettingsDep, require_permission
 from app.auth.rbac import Principal
 from app.ingest.assemble import FIELD_LABELS, TECHNICAL_FIELDS, HeaderMeta, document_caption
 from app.ingest.storage import FileStore
-from app.models import Chunk, Document, DocumentFile, Source
+from app.models import Chunk, Collection, Document, DocumentFile, Source
 
 router = APIRouter(prefix="/api/documents", tags=["документы"])
 
@@ -85,6 +85,7 @@ class Option(BaseModel):
 
 class Filters(BaseModel):
     sources: list[Option]
+    collections: list[Option]
     doc_types: list[str]
     unavailable_sources: list[UnavailableOut]
 
@@ -295,6 +296,14 @@ async def filters(principal: Reader, session: SessionDep, settings: SettingsDep)
         Option(value=str(sid) if sid is not None else MANUAL, label=name or MANUAL_NAME)
         for sid, name in src_rows.all()
     ]
+    coll_rows = await session.execute(
+        select(Collection.id, Collection.name)
+        .join(Document, Document.collection_id == Collection.id)
+        .where(cond)
+        .group_by(Collection.id, Collection.name)
+        .order_by(Collection.name)
+    )
+    collections = [Option(value=str(cid), label=name) for cid, name in coll_rows.all()]
     types = await session.scalars(
         select(Document.doc_type)
         .where(cond, Document.doc_type.is_not(None))
@@ -303,6 +312,7 @@ async def filters(principal: Reader, session: SessionDep, settings: SettingsDep)
     )
     return Filters(
         sources=sources,
+        collections=collections,
         doc_types=[t for t in types if t],
         unavailable_sources=_unavailable(access),
     )

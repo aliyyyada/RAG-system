@@ -106,6 +106,43 @@ class Settings(BaseSettings):
     # чтобы упавший источник не добавлял таймаут к каждому запросу каждого пользователя.
     access_retry_seconds: int = Field(default=30, ge=0, le=3600)
 
+    # ---------- Поиск и чат (этап 4) ----------
+    # Сколько фрагментов берём из каждого вида поиска (вектор и полнотекстовый) до слияния RRF.
+    search_candidates: int = Field(default=30, ge=5, le=200)
+    # Константа RRF: score = Σ 1 / (rrf_k + место в списке). 60 — значение из статьи о RRF.
+    search_rrf_k: int = Field(default=60, ge=1)
+    # Сколько лучших после слияния отдаём реранкеру и сколько после него — модели.
+    rerank_top_n: int = Field(default=20, ge=1, le=100)
+    rag_top_k: int = Field(default=6, ge=1, le=20)
+    # Сколько символов текста фрагментов помещаем в промпт (~ 4 символа на токен у bge/qwen).
+    rag_context_chars: int = Field(default=12000, ge=1000)
+    # Реранкер bge-reranker-v2-m3: onnx — локальная модель в папке reranker_dir (CPU);
+    # none — без реранкера (порядок RRF). Папки нет — работаем без реранкера с предупреждением.
+    reranker: Literal["onnx", "none"] = "onnx"
+    reranker_dir: str = "/models/reranker"
+    reranker_threads: int = Field(default=4, ge=1, le=64)
+    reranker_max_tokens: int = Field(default=512, ge=64, le=8192)
+    # Фрагменты с оценкой реранкера ниже порога (0…1) в ответ не идут. Если ниже порога все —
+    # отвечаем «в документах ответа нет», не обращаясь к модели.
+    rerank_min_score: float = Field(default=0.05, ge=0, le=1)
+    # Сколько последних реплик диалога передаём модели (вопрос + ответ = 2 реплики).
+    chat_history_turns: int = Field(default=6, ge=0, le=40)
+    # Сколько дней хранится история чатов (с последнего вопроса).
+    chat_history_days: int = Field(default=90, ge=1, le=3650)
+    # Сколько токенов максимум генерирует модель в ответе.
+    llm_max_tokens: int = Field(default=1024, ge=64, le=8192)
+    llm_temperature: float = Field(default=0.1, ge=0, le=2)
+    # Сколько ждём первого байта от Ollama (загрузка модели в видеопамять — до минуты).
+    llm_timeout_seconds: float = Field(default=180.0, gt=0)
+    # Запись очереди к LLM без heartbeat дольше этого срока считается брошенной.
+    llm_queue_stale_seconds: int = Field(default=30, ge=5)
+    # Векторизация в worker: по сколько фрагментов за один запрос к Ollama.
+    embed_batch_size: int = Field(default=16, ge=1, le=256)
+    # Гостевой режим: не больше N вопросов в минуту с одного IP.
+    guest_questions_per_minute: int = Field(default=6, ge=1, le=600)
+    # Вопрос пользователя — не длиннее (символов).
+    question_max_chars: int = Field(default=2000, ge=100, le=20000)
+
     worker_poll_seconds: float = 2.0
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.
