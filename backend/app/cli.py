@@ -7,7 +7,8 @@
         --name "Аварийный администратор" --admin --emergency
     docker compose exec app python -m app.cli seed-test-users        # только разработка
     docker compose exec app python -m app.cli add-source docflow --name "Документооборот" \
-        --url https://docflow.zavod.local/api/rag
+        --url mssql://sql.zavod.local:1433/Docflow --call "EXEC dbo.GetDocuments"
+    docker compose exec app python -m app.cli seed-fake-mssql        # только разработка
     docker compose exec app python -m app.cli seed-fake-source       # только разработка
     docker compose exec app python -m app.cli source-token docflow   # токен для API источника
     docker compose exec app python -m app.cli sync docflow [--reconcile]
@@ -26,6 +27,7 @@ import asyncio
 import getpass
 import os
 import sys
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -177,12 +179,33 @@ async def seed_test_users() -> str:
 FAKE_SOURCE_URL = "https://fake-service:8443/source"
 
 
-async def add_source(code: str, name: str, url: str) -> str:
+async def add_source(code: str, name: str, url: str, config: dict[str, Any] | None = None) -> str:
+    """https://… — адаптер http_json; mssql://сервер:порт/База — источник в MS SQL Server."""
     from app.ingest.service import ServiceError, create_source
+    from app.sources.base import BadSourceData
+    from app.sources.mssql import parse_address, parse_config
 
+    adapter = "mssql" if url.startswith("mssql://") else "http_json"
+    if adapter == "mssql":
+        try:
+            parse_address(url)
+            config = parse_config(config).model_dump(exclude_defaults=True)
+        except BadSourceData as exc:
+            raise SystemExit(str(exc)) from None
+    elif not url.startswith("https://"):
+        raise SystemExit("Адрес источника: https://… или mssql://сервер:1433/База")
     async with get_sessionmaker()() as session:
         try:
-            src = await create_source(session, code=code, name=name, base_url=url)
+            src = await create_source(
+                session,
+                code=code,
+                name=name,
+                base_url=url,
+                adapter=adapter,
+                config=config,
+                # Функция отдаёт все бинарники за раз — не дёргаем её каждые 15 минут.
+                sync_interval_minutes=60 if adapter == "mssql" else 15,
+            )
         except ServiceError as exc:
             raise SystemExit(exc.message) from None
         await write_audit(
@@ -203,6 +226,21 @@ async def seed_fake_source(url: str) -> str:
         if await session.scalar(select(Source).where(Source.code == "docflow")):
             return "Источник docflow уже подключён"
     return await add_source("docflow", "Документооборот (тестовый)", url)
+
+
+async def seed_fake_mssql() -> str:
+    """Фейковый источник в MS SQL (таблицы из fakes/fake_mssql.py, без SQL Server)."""
+    if not get_settings().enable_test_users:
+        raise SystemExit("Фейковый источник только для разработки (ENABLE_TEST_USERS=true)")
+    async with get_sessionmaker()() as session:
+        if await session.scalar(select(Source).where(Source.code == "docs-sql")):
+            return "Источник docs-sql уже подключён"
+    return await add_source(
+        "docs-sql",
+        "Документы MS SQL (тестовый)",
+        "mssql://fake-mssql:1433/Docflow",
+        {"driver": "fake", "call_sql": "EXEC dbo.GetDocuments"},
+    )
 
 
 async def _source_by_code(session: AsyncSession, code: str) -> Source:
@@ -324,7 +362,12 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("add-source", help="Подключить источник документов")
     p.add_argument("code", help="Короткий код латиницей, например docflow")
     p.add_argument("--name", required=True, help="Название, например «Документооборот»")
-    p.add_argument("--url", required=True, help="Адрес API источника (https://…)")
+    p.add_argument("--url", required=True, help="mssql://сервер:1433/База или адрес API https://…")
+    p.add_argument(
+        "--call", help="Вызов функции источника MS SQL, например «EXEC dbo.GetDocuments»"
+    )
+
+    sub.add_parser("seed-fake-mssql", help="Подключить фейковый источник MS SQL (разработка)")
 
     p = sub.add_parser("seed-fake-source", help="Подключить фейковый источник (разработка)")
     p.add_argument("--url", default=FAKE_SOURCE_URL)
@@ -369,9 +412,10 @@ def main(argv: list[str] | None = None) -> None:
                     args.personnel_number.strip(), args.name, args.admin, args.emergency, password
                 )
             if args.cmd == "add-source":
-                if not args.url.startswith("https://"):
-                    raise SystemExit("Адрес источника должен начинаться с https://")
-                return await add_source(args.code, args.name, args.url)
+                config = {"call_sql": args.call} if args.call else None
+                return await add_source(args.code, args.name, args.url, config)
+            if args.cmd == "seed-fake-mssql":
+                return await seed_fake_mssql()
             if args.cmd == "seed-fake-source":
                 return await seed_fake_source(args.url)
             if args.cmd == "source-token":

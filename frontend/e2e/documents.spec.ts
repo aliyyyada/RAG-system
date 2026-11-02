@@ -2,8 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { loginAs } from './helpers'
 
 // Этап 3: документы по правам источника. Нужны worker и фейковый источник (как в CI).
-// T-0001 источник разрешает приказы 112, 140 и регламент ТО; общие (видны всем, даже
-// гостю) — ИОТ-044 и Положение о СУОТ. Приказ № 45 T-0001 не разрешён.
+// T-0001 источник разрешает приказы 112, 140 и регламент ТО; общие (видны всем вошедшим,
+// гостю — нет) — ИОТ-044 и Положение о СУОТ. Приказ № 45 T-0001 не разрешён.
 
 const rows = (page: Page) => page.locator('table.tbl tbody tr')
 
@@ -15,11 +15,11 @@ async function waitRows(page: Page, n: number) {
   }).toPass({ timeout: 120_000 })
 }
 
-test('гость видит только общие документы и открывает их', async ({ page }) => {
+test('без прав в источнике — только общие документы, и они открываются', async ({ page }) => {
   test.setTimeout(150_000)
+  await loginAs(page, 'T-0003') // источник не выдал ему ни одного документа
   await page.goto('/documents')
   await expect(page.getByRole('heading', { name: 'Документы' })).toBeVisible()
-  await expect(page.getByText('Вы вошли как гость')).toBeVisible()
   await waitRows(page, 2)
   await expect(rows(page).filter({ hasText: 'Инструкция по охране труда для электросварщика' })).toHaveCount(1)
   await expect(rows(page).filter({ hasText: 'Положение о системе управления охраной труда' })).toHaveCount(1)
@@ -58,10 +58,10 @@ test('пользователь видит только разрешённое, �
   await expect(page.getByRole('heading', { name: 'Нет доступа к документу' })).toBeVisible()
   await expect(page.getByText(/Источник «Документооборот.*» не выдал вам права на этот документ/)).toBeVisible()
 
-  // Гость по той же ссылке — предложение войти.
+  // Гость по той же ссылке — страница входа, после входа вернёт к документу.
   const guest = await (await browser.newContext()).newPage()
   await guest.goto(url45)
-  await expect(guest.getByRole('heading', { name: 'Документ доступен только после входа' })).toBeVisible()
+  await expect(guest).toHaveURL(/\/login\?next=/)
 })
 
 test('ручная загрузка: администратор открывает документ конкретному человеку', async ({ browser }) => {
@@ -71,7 +71,7 @@ test('ручная загрузка: администратор открывае
   await admin.goto('/admin/documents')
   await admin.getByRole('button', { name: 'Загрузить документ' }).click()
   const dlg = admin.getByRole('dialog', { name: 'Загрузить документ' })
-  await dlg.getByLabel('Файл PDF или DOCX').setInputFiles('../backend/fakes/files/iot_044.docx')
+  await dlg.getByLabel('Файл PDF, DOCX или DOC').setInputFiles('../backend/fakes/files/iot_044.docx')
   await dlg.getByLabel('Название').fill('Памятка электросварщику (для T-0001)')
   await dlg.getByRole('button', { name: 'Загрузить' }).click()
   await expect(admin.locator('.page-h .badge', { hasText: 'Готово' })).toBeVisible({ timeout: 60_000 })

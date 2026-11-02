@@ -197,7 +197,7 @@ function eventText(e: { event: string; details: Record<string, unknown> }): stri
                   {{ f.name }}<br />
                   <span class="small muted">
                     <template v-if="f.pages">{{ f.pages }} стр., </template>
-                    {{ f.ocr_pages ? `распознано OCR: ${f.ocr_pages} стр.` : f.mime.includes('pdf') ? 'текстовый слой' : 'DOCX' }},
+                    {{ f.ocr_pages ? `распознано OCR: ${f.ocr_pages} стр.` : f.mime.includes('pdf') ? 'текстовый слой' : f.mime.startsWith('image/') ? 'скан' : f.mime === 'application/msword' ? 'DOC' : 'DOCX' }},
                     {{ formatSize(f.size) }}
                   </span>
                   <div v-for="w in f.warnings" :key="w" class="small" style="color: var(--warn)">{{ w }}</div>

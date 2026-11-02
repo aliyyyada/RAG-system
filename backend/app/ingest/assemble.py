@@ -43,8 +43,10 @@ FIELD_LABELS: dict[str, str] = {
     "acquainted_at": "Дата ознакомления",
     "responsible": "Ответственный",
     "deadline": "Срок",
+    "executor": "Исполнитель",
 }
-# Технические поля: в текст для поиска не идут.
+# Технические поля: в текст для поиска не идут. Сюда же — любое поле, чьё имя
+# начинается с «_» (так адаптер mssql помечает скрытые колонки: _ID_Вид, _ID_Key).
 TECHNICAL_FIELDS = {"id", "guid", "modified_at", "deleted_at", "created_at", "version"}
 # Поля, которые уже есть в заголовке документа.
 TITLE_FIELDS = {"doc_type", "number", "date", "title", "description"}
@@ -130,7 +132,12 @@ def part_to_rows(part: TablePart) -> list[list[str]]:
     columns: list[str] = []
     for row in part.rows:
         for key in row:
-            if key not in columns and key not in TECHNICAL_FIELDS and key != "document_id":
+            if (
+                key not in columns
+                and key not in TECHNICAL_FIELDS
+                and not key.startswith("_")
+                and key != "document_id"
+            ):
                 columns.append(key)
     header = [FIELD_LABELS.get(c, c) for c in columns]
     body = [
@@ -146,7 +153,12 @@ def assemble_header(header: dict[str, Any], parts: list[TablePart]) -> list[Bloc
 
     fields = []
     for key, value in header.items():
-        if key in TECHNICAL_FIELDS or key in TITLE_FIELDS or value in (None, "", [], {}):
+        if (
+            key in TECHNICAL_FIELDS
+            or key.startswith("_")
+            or key in TITLE_FIELDS
+            or value in (None, "", [], {})
+        ):
             continue
         fields.append(f"{FIELD_LABELS.get(key, key)}: {_format_value(value)}")
     if fields:

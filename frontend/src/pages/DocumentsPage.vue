@@ -127,7 +127,7 @@ const unavailable = computed(() => data.value?.unavailable_sources ?? [])
     <div v-if="auth.isGuest" class="alert a-info" style="margin-bottom: 16px">
       <AppIcon name="info" />
       <div>
-        <b>Вы вошли как гость</b>Доступны только общие документы.
+        <b>Вы вошли как гость</b>Документы доступны только после входа.
         <RouterLink :to="{ name: 'login', query: { next: route.fullPath } }">Войти</RouterLink>
       </div>
     </div>

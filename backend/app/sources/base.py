@@ -93,7 +93,7 @@ class DocumentSource(Protocol):
         ...
 
     async def common_ids(self) -> set[str]:
-        """Id документов, доступных всем (в том числе без входа)."""
+        """Id документов, доступных всем вошедшим (без входа документов не видит никто)."""
         ...
 
     async def user_document_ids(self, personnel_number: str) -> set[str]:

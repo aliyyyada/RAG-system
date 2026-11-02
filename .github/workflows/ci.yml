@@ -160,8 +160,9 @@ jobs:
           grep -q "event: done" /tmp/sse.txt
           # Фронтенд отдаётся nginx, адреса SPA (например /login) ведут на index.html
           curl -skf https://localhost/login | grep -q "Поиск по документам"
-          # Гость получает только поиск по общим документам, админка без входа закрыта
-          curl -skf https://localhost/api/auth/me | grep -q '"permissions":\["search.common"\]'
+          # Без входа нет ни прав, ни документов (гостевой режим выключен), админка закрыта
+          curl -skf https://localhost/api/auth/me | grep -q '"permissions":\[\]'
+          curl -skf https://localhost/api/auth/me | grep -q '"guest_mode_enabled":false'
           test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/admin/users)" = "401"
       - name: Логи при ошибке
         if: failure()

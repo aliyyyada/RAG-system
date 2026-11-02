@@ -339,6 +339,9 @@ class Source(Base):
     reconcile_hour: Mapped[int] = mapped_column(Integer, server_default=text("2"))
     # SHA-256 токена, с которым источник сам обращается к нашему API (сам токен не храним).
     callback_token_hash: Mapped[str | None] = mapped_column(String(64))
+    # Настройки адаптера (для `mssql`: вызов функции, имена колонок, режим прав).
+    # Пароли сюда не пишем — они только в .env.
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
 
     sync_cursor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -566,6 +569,29 @@ class StagingDocument(Base):
     check_errors: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
 
     __table_args__ = (Index("ux_staging_source_external", "source_id", "external_id", unique=True),)
+
+
+class SourceItem(Base):
+    """Последний снимок документа источника, который отдаёт всё одним вызовом (MS SQL).
+
+    Адаптер `mssql` вызывает функцию источника, раскладывает бинарники в хранилище файлов
+    (имя = SHA-256) и записывает сюда шапку и список файлов. Дальше синхронизация и
+    обработка документа берут данные отсюда, не вызывая функцию на каждый документ.
+    `fingerprint` — SHA-256 шапки и файлов: изменился — значит, документ изменился.
+    """
+
+    __tablename__ = "source_items"
+
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    external_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    version: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    header: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    files: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SyncRun(Base):

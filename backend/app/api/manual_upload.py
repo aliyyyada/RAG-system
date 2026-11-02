@@ -1,7 +1,8 @@
 """Ручная загрузка документа через интерфейс (для отладки), право documents.upload_manual.
 
 Документ попадает в коллекцию «Ручные загрузки». Файл проверяется по содержимому
-(PDF или DOCX, не больше MANUAL_UPLOAD_MAX_MB), сохраняется на диск под SHA-256 и
+(PDF, DOCX, DOC или скан TIFF/PNG/JPEG, не больше MANUAL_UPLOAD_MAX_MB),
+сохраняется на диск под SHA-256 и
 ставится в очередь с наивысшим приоритетом — через несколько секунд он «готов».
 Признак «общий» ставит загрузивший. Загрузивший сразу получает доступ к документу, чтобы
 проверить разбор; кому ещё он открыт, администратор задаёт в карточке документа (этап 3).
@@ -37,7 +38,7 @@ async def upload_manual(
     session: SessionDep,
     settings: SettingsDep,
     request: Request,
-    file: Annotated[UploadFile, File(description="PDF или DOCX")],
+    file: Annotated[UploadFile, File(description="PDF, DOCX, DOC или скан")],
     title: Annotated[str, Form(min_length=1, max_length=1000)],
     number: Annotated[str | None, Form(max_length=100)] = None,
     doc_type: Annotated[str | None, Form(max_length=100)] = None,
@@ -60,7 +61,7 @@ async def upload_manual(
             raise _err(422, "empty", "Файл пустой")
         kind = detect_type(tmp)
         if kind is None:
-            raise _err(422, "bad_type", "Поддерживаются только PDF и DOCX")
+            raise _err(422, "bad_type", "Поддерживаются PDF, DOCX, DOC и сканы TIFF, PNG, JPEG")
         sha = digest.hexdigest()
         store.commit(tmp, sha)
     finally:

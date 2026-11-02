@@ -175,7 +175,12 @@ def _fields(doc: Document, source_name: str) -> list[FieldOut]:
     ]
     skip = TECHNICAL_FIELDS | {"doc_type", "number", "date", "title", "topic", "description"}
     for key, value in (doc.header or {}).items():
-        if key in skip or value in (None, "") or isinstance(value, dict | list):
+        if (
+            key in skip
+            or key.startswith("_")  # технические колонки источника (_ID_Key и т. п.)
+            or value in (None, "")
+            or isinstance(value, dict | list)
+        ):
             continue
         out.append(FieldOut(label=FIELD_LABELS.get(key, key), value=str(value)))
     out.append(FieldOut(label="Источник", value=source_name))

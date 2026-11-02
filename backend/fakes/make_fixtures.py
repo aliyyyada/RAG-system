@@ -171,6 +171,49 @@ def scan_pdf() -> None:
     img.save(OUT / "prikaz_45_scan.pdf", "PDF", resolution=200.0)
 
 
+def scan_tiff() -> None:
+    """Скан-картинка TIFF (как бинарник из MS SQL): двухстраничный, сжатие без потерь."""
+    font = ImageFont.truetype(str(_font("DejaVuSans.ttf")), 34)
+    bold = ImageFont.truetype(str(_font("DejaVuSans-Bold.ttf")), 40)
+    pages = []
+    texts = [
+        (
+            "УКАЗАНИЕ № 149 от 31.05.2011",
+            [
+                "О проверке огнетушителей",
+                "",
+                "1. Проверить огнетушители на участке литья",
+                "до 15 июня 2011 года.",
+                "2. Ответственным назначить мастера Петрова В. Н.",
+            ],
+        ),
+        (
+            "Приложение к указанию № 149",
+            [
+                "Огнетушители ОП-5 перезаряжать раз в 5 лет.",
+                "Огнетушители ОУ-3 перезаряжать раз в 5 лет.",
+            ],
+        ),
+    ]
+    for title, lines in texts:
+        img = Image.new("L", (1654, 2339), 255)  # A4, 200 dpi
+        draw = ImageDraw.Draw(img)
+        y = 160
+        draw.text((160, y), title, font=bold, fill=0)
+        y += 110
+        for line in lines:
+            draw.text((160, y), line, font=font, fill=0)
+            y += 60
+        pages.append(img.convert("1"))
+    pages[0].save(
+        OUT / "ukazanie_149_scan.tif",
+        save_all=True,
+        append_images=pages[1:],
+        compression="group4",
+        dpi=(200, 200),
+    )
+
+
 def iot_docx() -> None:
     doc = new_docx()
     doc.add_heading("ИОТ-044. Инструкция по охране труда для электросварщика", level=0)
@@ -230,11 +273,74 @@ def polozhenie_docx() -> None:
     doc.save(OUT / "polozhenie_suot.docx")
 
 
+def doc_files() -> None:
+    """Старый Word (.doc): DOCX → DOC через LibreOffice (только на машине разработчика).
+
+    Нужен `soffice` в PATH. В образ и на завод LibreOffice не попадает.
+    """
+    import shutil
+    import subprocess  # noqa: S404 — фиксированные аргументы, без shell
+    import tempfile
+
+    exe = shutil.which("soffice")
+    if exe is None:
+        print("soffice не найден: .doc не пересобраны")
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        d = new_docx()
+        d.add_heading("УКАЗАНИЕ № 162 от 07.06.2011", level=1)
+        d.add_paragraph("О ремонте кровли склада")
+        d.add_heading("1. Общие положения", level=2)
+        d.add_paragraph(
+            "1.1. Начальнику склада Смирнову О. Л. организовать ремонт кровли до 1 июля 2011 года."
+        )
+        d.add_paragraph("1.2. Работы на высоте выполнять только по наряду-допуску.")
+        rows = [
+            ["Работа", "Срок", "Ответственный"],
+            ["Демонтаж покрытия", "", ""],  # пустые ячейки
+            ["Укладка рубероида", "до 01.07.2011", "Смирнов О. Л."],
+        ]
+        t = d.add_table(rows=3, cols=3)
+        for r, row in enumerate(rows):
+            for c, value in enumerate(row):
+                t.cell(r, c).text = value
+        d.add_paragraph("2. Контроль исполнения оставляю за собой.")
+        d.save(f"{tmp}/ukazanie_162.docx")
+
+        d = new_docx()
+        d.add_paragraph("Plain English text with ASCII only.")  # однобайтный кусок текста
+        t = d.add_table(rows=2, cols=2)
+        t.cell(0, 0).text, t.cell(0, 1).text, t.cell(1, 0).text = "Пункт", "Требование", "3.1"
+        cell = t.cell(1, 1)
+        cell.text = "Первая строка ячейки"
+        cell.add_paragraph("Вторая строка ячейки")  # ячейка из двух абзацев
+        d.add_paragraph("После таблицы.")
+        d.save(f"{tmp}/doc_cells.docx")
+
+        for name in ("ukazanie_162", "doc_cells"):
+            subprocess.run(  # noqa: S603
+                [
+                    exe,
+                    "--headless",
+                    "--convert-to",
+                    "doc:MS Word 97",
+                    "--outdir",
+                    tmp,
+                    f"{tmp}/{name}.docx",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            shutil.copy(f"{tmp}/{name}.doc", OUT / f"{name}.doc")
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     prikaz_112_pdf()
     reglament_to_pdf()
     scan_pdf()
+    scan_tiff()
+    doc_files()
     iot_docx()
     polozhenie_docx()
     (OUT / "prikaz_97.pdf").write_bytes(b"")  # битый файл: 0 байт

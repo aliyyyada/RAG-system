@@ -29,6 +29,8 @@ os.environ.setdefault("RERANKER", "none")
 # Фейковые эмбеддинги грубее bge-m3: близкие по смыслу фрагменты получают близость 0,25–0,6,
 # а не 0,6–0,9. Порог кандидатов в противоречия (этап 6) для тестов ниже.
 os.environ.setdefault("CONTRA_MIN_SIMILARITY", "0.2")
+# Гостевой режим в тестах включён: проверяем, что даже с ним гость не получает документов.
+os.environ.setdefault("GUEST_MODE_ENABLED", "true")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -202,5 +204,40 @@ async def docflow(database_url: str, clean_docs: None, fake_source):  # type: ig
     async with get_sessionmaker()() as s, s.begin():
         src = await create_source(
             s, code="docflow", name="Документооборот", base_url="https://fake/source"
+        )
+        return src.id
+
+
+# ---------------------------------------------------------------------------
+# Источник в MS SQL Server (фейковые таблицы вместо сервера)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_mssql():  # type: ignore[no-untyped-def]
+    """Фейковая функция источника: адаптер mssql получает её таблицы без SQL Server."""
+    from app.sources.mssql import set_runner_override
+    from fakes.fake_mssql import FAKE_MSSQL
+
+    FAKE_MSSQL.reset()
+    set_runner_override(lambda source, config, settings: FAKE_MSSQL)
+    yield FAKE_MSSQL
+    set_runner_override(None)
+
+
+@pytest.fixture
+async def mssql_source(database_url: str, clean_docs: None, fake_mssql):  # type: ignore[no-untyped-def]
+    """Подключённый источник в MS SQL (фейковый). Возвращает id источника."""
+    from app.db import get_sessionmaker
+    from app.ingest.service import create_source
+
+    async with get_sessionmaker()() as s, s.begin():
+        src = await create_source(
+            s,
+            code="docs-sql",
+            name="Документы (MS SQL)",
+            base_url="mssql://sql.zavod.local:1433/Docflow",
+            adapter="mssql",
+            config={"call_sql": "EXEC dbo.GetDocuments"},
         )
         return src.id

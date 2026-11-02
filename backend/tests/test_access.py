@@ -77,27 +77,20 @@ async def _assert_closed(
 # ---------------------------------------------------------------------------
 
 
-async def test_guest_sees_only_common(client: httpx.AsyncClient, ids: dict[str, int]) -> None:
+async def test_guest_sees_no_documents(client: httpx.AsyncClient, ids: dict[str, int]) -> None:
+    """Без входа — ни одного документа, даже общего (требование от 02.11.2026)."""
     keys, body = await _keys(client, ids)
-    assert keys == COMMON
-    assert body["total"] == 2 and body["total_in_system"] == 6
+    assert keys == set()
+    assert body["total"] == 0
     assert body["unavailable_sources"] == []
 
     r = await client.get("/api/documents/filters")
-    assert r.json()["doc_types"] == ["Инструкция", "Положение"]
+    assert r.json()["doc_types"] == []
 
     admin = auth(await login_ok(client, "T-0004"))
-    file_112 = await _file_id(client, ids["prikaz-112"], admin)
-    await _assert_closed(client, ids["prikaz-112"], None, "login_required", file_112)
-
-    # Общий документ гостю открыт полностью, включая файл.
-    file_iot = await _file_id(client, ids["iot-044"], None)
-    r = await client.get(f"/api/documents/{ids['iot-044']}/files/{file_iot}")
-    assert r.status_code == 200
-    assert r.content == (FILES_DIR / "iot_044.docx").read_bytes()
-    assert "attachment" in r.headers["content-disposition"]
-    r = await client.get(f"/api/documents/{ids['iot-044']}/chunks")
-    assert r.status_code == 200 and r.json()["total"] > 0
+    for key in ("prikaz-112", "iot-044"):  # закрытый и общий — одинаково закрыты
+        file_id = await _file_id(client, ids[key], admin)
+        await _assert_closed(client, ids[key], None, "login_required", file_id)
 
 
 async def test_user_sees_only_documents_allowed_by_source(

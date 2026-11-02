@@ -60,8 +60,8 @@ async function submit() {
   <AppDialog v-model:open="open" title="Загрузить документ">
     <form id="upload-form" class="stack" @submit.prevent="submit">
       <div class="field">
-        <label class="label" for="up-file">Файл PDF или DOCX</label>
-        <input id="up-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="pick" />
+        <label class="label" for="up-file">Файл PDF, DOCX или DOC</label>
+        <input id="up-file" type="file" accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="pick" />
         <span class="hint">Документ попадёт в коллекцию «Ручные загрузки» и через несколько секунд будет разобран.</span>
       </div>
       <div class="field">
@@ -78,7 +78,7 @@ async function submit() {
           <input id="up-number" v-model="number" class="input" maxlength="100" placeholder="112" />
         </div>
       </div>
-      <label class="check"><input v-model="isCommon" type="checkbox" /> Общий документ — доступен всем, в том числе без входа</label>
+      <label class="check"><input v-model="isCommon" type="checkbox" /> Общий документ — доступен всем вошедшим сотрудникам</label>
       <FormError :message="error" />
     </form>
     <template #footer>

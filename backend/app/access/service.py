@@ -42,7 +42,7 @@ class UnavailableSource:
 class DocumentAccess:
     """Что человеку можно видеть из документов.
 
-    common      — общие документы (у гостя только они);
+    common      — общие документы (для вошедших; у гостя документов нет совсем);
     user_id     — чей кэш прав источников и чьи выдачи ручных загрузок учитывать
                   (None — гость или у человека нет права documents.view);
     sources     — источники, чей ответ о правах сейчас есть в кэше (только по ним
@@ -139,10 +139,17 @@ async def _store(user_id: int, results: list[_Fetched], settings: Settings) -> N
 async def resolve_access(
     session: AsyncSession, principal: Principal, settings: Settings
 ) -> DocumentAccess:
-    """Права человека на документы; при необходимости опрашивает источники."""
-    common = principal.has(perms.SEARCH_COMMON) or principal.has(perms.DOCUMENTS_VIEW)
+    """Права человека на документы; при необходимости опрашивает источники.
+
+    Без входа — никаких документов, даже общих (требование заказчика от 02.11.2026):
+    гость не видит документы ни в поиске, ни в ответах, ни в просмотре, что бы ни
+    было выдано роли «Гость».
+    """
     user = principal.user
-    if user is None or not principal.has(perms.DOCUMENTS_VIEW):
+    if user is None:
+        return DocumentAccess(common=False)
+    common = principal.has(perms.SEARCH_COMMON) or principal.has(perms.DOCUMENTS_VIEW)
+    if not principal.has(perms.DOCUMENTS_VIEW):
         return DocumentAccess(common=common)
 
     sources = list(await session.scalars(select(Source).where(Source.enabled).order_by(Source.id)))

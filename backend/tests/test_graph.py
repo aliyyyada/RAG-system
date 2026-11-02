@@ -456,17 +456,11 @@ async def test_entities_respect_access(client: httpx.AsyncClient, graph: dict[st
     view = json.dumps(r.json(), ensure_ascii=False)
     assert "Смирнов" not in view and "№ 45" not in view
     assert "Иванова А. С." in view
-    # Гость — только сущности общих документов.
+    # Гость (без входа) не видит ни одной сущности — даже из общих документов.
     r = await client.get("/api/graph/entities", params={"limit": 200})
-    names = {e["name"] for e in r.json()["items"]}
-    assert "сварочный аппарат" in names
-    assert "Иванова А. С." not in names and "Смирнов О. Л." not in names
-    # «Работы на высоте» упомянуты и в общем Положении о СУОТ (п. 3.1), поэтому гость
-    # сущность видит, но только с документами и связями из общих документов.
+    assert r.json() == {"items": [], "total": 0}
     r = await client.get(f"/api/graph/entities/{work.id}")
-    assert r.status_code == 200
-    assert {d["id"] for d in r.json()["documents"]} == {graph["polozhenie-suot"]}
-    assert "Иванова" not in json.dumps(r.json(), ensure_ascii=False)
+    assert r.status_code == 404
     # Сущности в карточке документа — только для доступного документа.
     r = await client.get(f"/api/documents/{graph['prikaz-112']}/graph", headers=auth(user))
     assert "Иванова А. С." in {e["name"] for e in r.json()["entities"]}

@@ -146,8 +146,9 @@ export interface Source {
   id: number
   code: string
   name: string
-  adapter: string
+  adapter: SourceAdapter
   base_url: string
+  config: MssqlConfig | Record<string, unknown>
   enabled: boolean
   sync_interval_minutes: number
   overlap_minutes: number
@@ -163,6 +164,20 @@ export interface Source {
   report: SourceReport
 }
 
+export type SourceAdapter = 'mssql' | 'http_json'
+
+// Настройки источника в MS SQL Server (backend/app/sources/mssql.py, MssqlConfig).
+export interface MssqlConfig {
+  call_sql: string
+  service_user: string | null
+  file_type_column: string | null
+  access_mode: 'all_authenticated' | 'sql'
+  access_sql: string | null
+  common_sql: string | null
+  encrypt: boolean
+  [key: string]: unknown
+}
+
 export interface SourceSettings {
   name: string
   base_url: string
@@ -170,6 +185,7 @@ export interface SourceSettings {
   sync_interval_minutes: number
   overlap_minutes: number
   reconcile_hour: number
+  config?: Record<string, unknown>
 }
 
 export interface DocumentRow {

@@ -27,3 +27,9 @@ numpy==2.5.4
 flatbuffers==25.12.19
 protobuf==7.36.2
 packaging==26.3
+# Источник документов в MS SQL Server: драйвер python-tds (MIT, чистый Python, без ODBC)
+# и pyOpenSSL (Apache-2.0) для шифрования соединения. cryptography уже стоит для pdfminer.
+python-tds==1.17.1
+pyOpenSSL==26.4.0
+# Старый Word (.doc) из источника: контейнер OLE читает olefile (BSD), текст — наш код
+olefile==0.47

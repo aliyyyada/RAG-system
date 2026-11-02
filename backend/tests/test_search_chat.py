@@ -245,25 +245,25 @@ async def test_answer_streams_with_sources_and_citations(
     assert len(fake_ollama.prompts) == 1
 
 
-async def test_guest_gets_answers_only_from_common_documents(
+async def test_guest_gets_no_documents_in_answers(
     client: httpx.AsyncClient, ids: dict[str, int], fake_ollama: FakeOllamaState
 ) -> None:
+    """Без входа — никаких документов в ответе, даже общих (требование от 02.11.2026)."""
     res = await ask(client, "Какие СИЗ выдаются электросварщику?")
-    assert source_docs(res) <= {ids["iot-044"], ids["polozhenie-suot"]}
-    assert res["done"]["cited"]
+    assert source_docs(res) == set()
+    assert res["done"]["cited"] == []
+    assert res["done"]["answer"] == NO_ANSWER
     assert res["meta"]["chat_id"] is None  # гостевой чат на сервере не хранится
-
-    fake_ollama.prompts.clear()
-    res = await ask(client, "Кто подписывает наряд-допуск на работы на высоте?")
-    assert source_docs(res) <= {ids["iot-044"], ids["polozhenie-suot"]}
-    assert "наряду-допуску" not in all_prompts(fake_ollama)
-    assert SECRET_45 not in all_prompts(fake_ollama)
+    # Модель не получила ни строчки из документов — ни общих, ни закрытых.
+    prompts = all_prompts(fake_ollama)
+    assert "электросварщик" not in prompts.replace("Какие СИЗ выдаются электросварщику?", "")
+    assert SECRET_45 not in prompts
 
     async with get_sessionmaker()() as s:
         rows = (await s.scalars(select(AuditLog).where(AuditLog.action == "chat.question"))).all()
-    assert len(rows) == 2 and rows[0].actor_user_id is None and rows[0].ip
+    assert len(rows) == 1 and rows[0].actor_user_id is None and rows[0].ip
     assert rows[0].details["question"] == "Какие СИЗ выдаются электросварщику?"
-    assert rows[0].details["cited_documents"] == [ids["iot-044"]]
+    assert rows[0].details["cited_documents"] == []
 
 
 async def test_off_topic_and_unknown_questions(
@@ -282,8 +282,9 @@ async def test_off_topic_and_unknown_questions(
 async def test_heartbeat_while_model_is_silent(
     client: httpx.AsyncClient, ids: dict[str, int], fake_ollama: FakeOllamaState
 ) -> None:
+    user = auth(await login_ok(client, "T-0001"))
     fake_ollama.first_token_delay = 4.5
-    res = await ask(client, "Какие СИЗ выдаются электросварщику?")
+    res = await ask(client, "Какие СИЗ выдаются электросварщику?", user)
     names = [n for n, _ in res["events"]]
     gen = names.index("status", names.index("sources"))
     first_token = names.index("token")
@@ -326,18 +327,6 @@ async def test_guest_rate_limit(client: httpx.AsyncClient, ids: dict[str, int]) 
     # Вошедшего пользователя ограничение для гостей не касается.
     user = auth(await login_ok(client, "T-0001"))
     await ask(client, "Нормы выдачи СИЗ", user)
-
-
-async def test_guest_history_comes_from_browser(
-    client: httpx.AsyncClient, ids: dict[str, int], fake_ollama: FakeOllamaState
-) -> None:
-    history = [
-        {"role": "user", "content": "Что должен проверить электросварщик перед работой?"},
-        {"role": "assistant", "content": "Исправность сварочного аппарата [1]"},
-    ]
-    await ask(client, "А после окончания работы?", history=history)
-    msgs = fake_ollama.prompts[-1]
-    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
 
 
 # ---------------------------------------------------------------------------

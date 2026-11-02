@@ -160,7 +160,12 @@ async def test_retry_all_failed(
 
 
 async def test_create_and_update_source(client: httpx.AsyncClient, admin: dict[str, str]) -> None:
-    body = {"code": "archive", "name": "Архив", "base_url": "http://archive/api"}
+    body = {
+        "code": "archive",
+        "name": "Архив",
+        "base_url": "http://archive/api",
+        "adapter": "http_json",
+    }
     r = await client.post("/api/admin/sources", json=body, headers=admin)
     assert r.status_code == 422  # только https
     body["base_url"] = "https://archive/api"
@@ -179,6 +184,51 @@ async def test_create_and_update_source(client: httpx.AsyncClient, admin: dict[s
     assert (r.json()["sync_interval_minutes"], r.json()["reconcile_hour"]) == (30, 3)
     colls = (await client.get("/api/admin/collections", headers=admin)).json()
     assert "Архив ОТК" in {c["name"] for c in colls}
+
+
+async def test_create_mssql_source_with_settings(
+    client: httpx.AsyncClient, admin: dict[str, str]
+) -> None:
+    body = {
+        "code": "docs-sql",
+        "name": "Документы (MS SQL)",
+        "base_url": "https://sql.zavod.local/Docflow",
+    }
+    r = await client.post("/api/admin/sources", json=body, headers=admin)
+    assert r.status_code == 422 and "mssql://" in r.text  # по умолчанию адаптер mssql
+    body["base_url"] = "mssql://sql.zavod.local:1433/Docflow"
+    body["config"] = {"call_sql": "EXEC dbo.GetDocuments; DROP TABLE x"}
+    r = await client.post("/api/admin/sources", json=body, headers=admin)
+    assert r.status_code == 422 and "один вызов" in r.text
+    body["config"] = {"call_sql": "EXEC dbo.rag_GetDocuments @Login = :user"}
+    r = await client.post("/api/admin/sources", json=body, headers=admin)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["adapter"] == "mssql"
+    assert out["config"]["call_sql"] == "EXEC dbo.rag_GetDocuments @Login = :user"
+    assert out["config"]["binary_column"] == "BinaryFile"  # значения по умолчанию видны
+    assert "password" not in r.text.lower()  # пароль только в .env
+
+    r = await client.patch(
+        f"/api/admin/sources/{out['id']}",
+        json={"config": {"access_mode": "sql"}},
+        headers=admin,
+    )
+    assert r.status_code == 422 and "access_sql" in r.text
+    r = await client.patch(
+        f"/api/admin/sources/{out['id']}",
+        json={
+            "config": {"access_mode": "sql", "access_sql": "EXEC dbo.Rights @Login = :user"},
+            "base_url": "mssql://sql2/Db",
+        },
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["config"]["access_mode"] == "sql" and r.json()["base_url"] == "mssql://sql2/Db"
+    r = await client.patch(
+        f"/api/admin/sources/{out['id']}", json={"base_url": "https://x"}, headers=admin
+    )
+    assert r.status_code == 422
 
 
 async def test_manual_upload(client: httpx.AsyncClient, admin: dict[str, str]) -> None:
