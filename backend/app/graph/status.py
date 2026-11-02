@@ -74,4 +74,8 @@ async def refresh(session: AsyncSession, document_ids: Iterable[int | None]) -> 
         header = doc.header.get("status") if isinstance(doc.header, dict) else None
         new = compute(header, bool(cancelled), bool(amended))
         if doc.legal_status != new:
+            if doc.legal_status == CANCELLED:
+                # Документ снова действует: противоречия с ним снова важны, а пока он был
+                # отменён, его пропускали (app/contradictions/candidates.py) — проверить заново.
+                doc.contra_version = None
             doc.legal_status = new

@@ -158,6 +158,20 @@ class Settings(BaseSettings):
     # Фрагментов за один заход задачи graph_extract (дальше задача встаёт в очередь снова).
     graph_chunks_per_job: int = Field(default=10, ge=1, le=500)
 
+    # ---------- Противоречия (этап 6) ----------
+    # Кандидаты: для каждого нормативного фрагмента — N самых похожих фрагментов других
+    # документов (bge-m3, косинусная близость не ниже порога) и фрагменты, связанные графом
+    # (общая сущность или связь документов) с более мягким порогом.
+    contra_neighbors: int = Field(default=3, ge=1, le=20)
+    contra_min_similarity: float = Field(default=0.6, ge=0, le=1)
+    contra_graph_neighbors: int = Field(default=2, ge=0, le=20)
+    contra_graph_min_similarity: float = Field(default=0.45, ge=0, le=1)
+    # Фрагмент обрезается до стольких символов в промпте (два фрагмента в одном вызове).
+    contra_chunk_max_chars: int = Field(default=1500, ge=200)
+    contra_max_tokens: int = Field(default=384, ge=64, le=4096)
+    # Пар за один заход задачи contra_scan (дальше задача встаёт в очередь снова).
+    contra_pairs_per_job: int = Field(default=10, ge=1, le=500)
+
     worker_poll_seconds: float = 2.0
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.

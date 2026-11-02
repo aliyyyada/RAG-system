@@ -9,6 +9,7 @@ from app.api import (
     admin,
     auth,
     chat,
+    contradictions,
     documents,
     graph,
     health,
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(integration.router)
     app.include_router(chat.router)
     app.include_router(graph.router)
+    app.include_router(contradictions.router)
     return app
 
 

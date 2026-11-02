@@ -213,6 +213,11 @@ async def handle_rules(
 
         if await extract.llm_enabled(s):
             await extract.enqueue_extract(s, doc.id, extract.PRIORITY_NEW)
+        # Противоречия (этап 6) — после связей: им нужен статус «Отменён» и связи документа.
+        from app.contradictions import scan as contra  # noqa: PLC0415
+
+        if await contra.enabled(s):
+            await contra.enqueue_scan(s, doc.id, contra.PRIORITY_NEW)
     log.debug("graph_rules %s: %d связей", document_id, len(links))
 
 

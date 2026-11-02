@@ -460,9 +460,13 @@ async def test_entities_respect_access(client: httpx.AsyncClient, graph: dict[st
     r = await client.get("/api/graph/entities", params={"limit": 200})
     names = {e["name"] for e in r.json()["items"]}
     assert "сварочный аппарат" in names
-    assert "работы на высоте" not in names and "Иванова А. С." not in names
+    assert "Иванова А. С." not in names and "Смирнов О. Л." not in names
+    # «Работы на высоте» упомянуты и в общем Положении о СУОТ (п. 3.1), поэтому гость
+    # сущность видит, но только с документами и связями из общих документов.
     r = await client.get(f"/api/graph/entities/{work.id}")
-    assert r.status_code == 404
+    assert r.status_code == 200
+    assert {d["id"] for d in r.json()["documents"]} == {graph["polozhenie-suot"]}
+    assert "Иванова" not in json.dumps(r.json(), ensure_ascii=False)
     # Сущности в карточке документа — только для доступного документа.
     r = await client.get(f"/api/documents/{graph['prikaz-112']}/graph", headers=auth(user))
     assert "Иванова А. С." in {e["name"] for e in r.json()["entities"]}
@@ -513,7 +517,10 @@ async def test_graph_search_never_leaks_hidden_documents(
         assert graph["prikaz-45"] not in {i["document_id"] for i in res["items"]}
     # Гость: граф только по общим документам.
     res = await search(client, None, "Кто ответственный за работы на высоте?", "graph")
-    assert res["items"] == [] and res["graph"]["entities"] == []
+    assert {i["document_id"] for i in res["items"]} <= {
+        graph["polozhenie-suot"],
+        graph["iot-044"],
+    }
 
     # Ответ модели: ни фрагментов, ни справки графа из приказа № 45.
     res = await ask(client, "Кто ответственный за работы на высоте?", auth(user), mode="mixed")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DropdownMenuContent,
@@ -12,11 +12,18 @@ import {
 import AppIcon from '@/components/AppIcon.vue'
 import LogoSlot from '@/components/LogoSlot.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useContradictionCount } from '@/stores/contradictions'
 import { initials, shortName } from '@/utils/format'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const contra = useContradictionCount()
+watch(
+  () => [route.name, auth.user?.id],
+  () => void contra.refresh(),
+  { immediate: true },
+)
 
 // Пункты шапки видны по правам. Это удобство, а не защита: backend проверяет права сам.
 const nav = computed(() =>
@@ -31,6 +38,7 @@ const nav = computed(() =>
     {
       to: '/contradictions',
       label: 'Противоречия',
+      count: contra.count,
       show: !auth.isGuest && auth.can('contradictions.view'),
       active: route.name === 'contradictions',
     },
@@ -79,7 +87,7 @@ async function logout(everywhere: boolean) {
         :to="item.to"
         :class="{ on: item.active }"
         :aria-current="item.active ? 'page' : undefined"
-        >{{ item.label }}</RouterLink
+        >{{ item.label }}<span v-if="'count' in item && item.count" class="cnt" data-testid="contra-count">{{ item.count }}</span></RouterLink
       >
     </nav>
     <div class="hright">
