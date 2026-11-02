@@ -138,7 +138,13 @@ const kindTitle = (l: GraphLink & { dir: 'in' | 'out' }) => l.kind_label.charAt(
 
 const mainFile = computed(() => doc.value?.files[0] ?? null)
 const fileKind = (mime: string) =>
-  mime.includes('pdf') ? 'PDF' : mime.startsWith('image/') ? mime.slice(6).toUpperCase() : 'DOCX'
+  mime.includes('pdf')
+    ? 'PDF'
+    : mime.startsWith('image/')
+      ? mime.slice(6).toUpperCase()
+      : mime === 'application/msword'
+        ? 'DOC'
+        : 'DOCX'
 </script>
 
 <template>

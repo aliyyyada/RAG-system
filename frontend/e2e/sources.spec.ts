@@ -64,7 +64,7 @@ test('ручная загрузка DOCX', async ({ page }) => {
   await page.goto('/admin/documents')
   await page.getByRole('button', { name: 'Загрузить документ' }).click()
   const dlg = page.getByRole('dialog', { name: 'Загрузить документ' })
-  await dlg.getByLabel('Файл PDF или DOCX').setInputFiles('../backend/fakes/files/polozhenie_suot.docx')
+  await dlg.getByLabel('Файл PDF, DOCX или DOC').setInputFiles('../backend/fakes/files/polozhenie_suot.docx')
   await dlg.getByLabel('Название').fill('Положение о СУОТ (ручная загрузка)')
   await dlg.getByRole('button', { name: 'Загрузить' }).click()
   await expect(page.getByRole('heading', { name: 'Положение о СУОТ (ручная загрузка)' })).toBeVisible()

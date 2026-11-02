@@ -149,11 +149,7 @@ async def test_first_sync_loads_documents_from_two_tables(
     docs = await _docs()
     assert fm.G_ORPHAN.upper() not in docs  # бинарник без строки в первой таблице
     ready = {k for k, d in docs.items() if d.status == "ready"}
-    assert ready == {fm.G_537, fm.G_151, fm.G_149, fm.G_159}
-
-    old_word = docs[fm.G_162]
-    assert (old_word.status, old_word.error_stage) == ("error", "parse")
-    assert "старый формат Word" in (old_word.error_message or "")
+    assert ready == {fm.G_537, fm.G_151, fm.G_149, fm.G_159, fm.G_162}
     empty = docs[fm.G_655]
     assert (empty.status, empty.error_stage) == ("error", "completeness")
     assert "пустой файл" in (empty.error_message or "")
@@ -182,6 +178,18 @@ async def test_first_sync_loads_documents_from_two_tables(
     assert scan_file is not None and (scan_file.mime, scan_file.ocr_pages) == ("image/tiff", 2)
     assert scan_file.name == "указание_149.tif"
     assert scan_pages == {1, 2}
+
+    # Старый Word (.doc): таблица попала во фрагменты таблицей Markdown.
+    async with get_sessionmaker()() as s:
+        doc_file = await s.scalar(
+            select(DocumentFile).where(DocumentFile.document_id == docs[fm.G_162].id)
+        )
+        doc_chunks = "\n".join(
+            await s.scalars(select(Chunk.text).where(Chunk.document_id == docs[fm.G_162].id))
+        )
+    assert doc_file is not None and doc_file.mime == "application/msword"
+    assert doc_file.name == "указание_162.doc"
+    assert "| Укладка рубероида | до 01.07.2011 | Смирнов О. Л. |" in doc_chunks
 
 
 @pytest.mark.db

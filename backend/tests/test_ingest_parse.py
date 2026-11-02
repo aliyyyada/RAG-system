@@ -157,3 +157,59 @@ def test_broken_files_give_clear_errors(tmp_path: Path) -> None:
     disguised = tmp_path / "prikaz.pdf"
     disguised.write_bytes((FILES_DIR / "iot_044.docx").read_bytes())
     assert detect_type(disguised) == "docx"
+
+
+# ---------------------------------------------------------------------------
+# Старый Word (.doc) — бинарники источника MS SQL
+# ---------------------------------------------------------------------------
+
+
+def test_doc_text_headings_and_table_with_empty_cells() -> None:
+    from app.ingest.doc import parse_doc
+
+    parsed = parse_doc(FILES_DIR / "ukazanie_162.doc")
+    kinds = [(b.kind, b.level, b.text) for b in parsed.blocks if b.kind != "table"]
+    # Стили «Заголовок 1/2» → уровни 2/3, как в DOCX; пункты — обычные абзацы.
+    assert ("heading", 2, "УКАЗАНИЕ № 162 от 07.06.2011") in kinds
+    assert ("heading", 3, "1. Общие положения") in kinds
+    assert (
+        "text",
+        0,
+        "1.1. Начальнику склада Смирнову О. Л. организовать ремонт кровли до 1 июля 2011 года.",
+    ) in kinds
+    (table,) = [b for b in parsed.blocks if b.kind == "table"]
+    # Пустые ячейки не сдвигают таблицу: конец строки берём из свойств абзаца, а не угадываем.
+    assert table.rows == [
+        ["Работа", "Срок", "Ответственный"],
+        ["Демонтаж покрытия", "", ""],
+        ["Укладка рубероида", "до 01.07.2011", "Смирнов О. Л."],
+    ]
+    # Порядок блоков как в документе: таблица между пунктом 1.2 и пунктом 2.
+    texts = [b.text for b in parsed.blocks]
+    assert texts.index(table.text) == len(texts) - 2
+
+
+def test_doc_cell_with_several_paragraphs_and_one_byte_text() -> None:
+    from app.ingest.doc import parse_doc
+
+    parsed = parse_doc(FILES_DIR / "doc_cells.doc")
+    assert parsed.blocks[0].text == "Plain English text with ASCII only."  # однобайтный кусок
+    assert parsed.blocks[1].rows == [
+        ["Пункт", "Требование"],
+        ["3.1", "Первая строка ячейки Вторая строка ячейки"],
+    ]
+    assert parsed.blocks[2].text == "После таблицы."
+
+
+def test_doc_detected_by_content_and_bad_ole_is_clear_error(tmp_path: Path) -> None:
+    from app.ingest.files import parse_file
+
+    renamed = tmp_path / "приказ.pdf"  # расширение врёт — тип по содержимому
+    renamed.write_bytes((FILES_DIR / "ukazanie_162.doc").read_bytes())
+    kind, parsed = parse_file(renamed, renamed.name, SETTINGS)
+    assert kind == "doc" and parsed.blocks
+
+    broken = tmp_path / "x.doc"
+    broken.write_bytes(bytes.fromhex("D0CF11E0A1B11AE1") + b"\x00" * 504)
+    with pytest.raises(ParseError, match="DOC не открывается"):
+        parse_file(broken, broken.name, SETTINGS)

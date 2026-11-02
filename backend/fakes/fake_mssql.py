@@ -11,7 +11,7 @@
 | Протокол 151 (DOCX)                   | DOCX                                               |
 | Указание 149 (TIFF, 2 страницы)       | скан-картинка → OCR постранично                    |
 | Указание 159 (без файла)              | документ только из метаданных                      |
-| Указание 162 (старый .doc)            | понятная ошибка «формат .doc не поддерживается»    |
+| Указание 162 (старый .doc с таблицей) | разбор Word 97–2003, таблица с пустыми ячейками    |
 | Приказ 655к (пустой BinaryFile)       | ошибка проверки полноты                            |
 | Файл без строки в первой таблице      | лишний бинарник пропускается                       |
 
@@ -36,8 +36,6 @@ FILES_DIR = Path(__file__).resolve().parent / "files"
 META_COLUMNS = ["ID_GUID", "ID_Вид", "ID_Key", "Номер", "Дата", "Тип", "Тема", "Исполнитель"]
 FILE_COLUMNS = ["ID_GUID", "BinaryFile", "FileType"]
 
-# Заголовок старого Word (OLE) — разбирать его мы пока не умеем.
-OLD_DOC = bytes.fromhex("D0CF11E0A1B11AE1") + b"\x00" * 504
 
 G_537 = "9F7248C8-BEDC-4103-A896-F89E687A28BF"
 G_151 = "6AA369A9-D214-43D7-BAC0-3EBFDD1A0FC2"
@@ -119,7 +117,7 @@ def _seed() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         {"ID_GUID": G_537, "BinaryFile": _file("prikaz_112.pdf"), "FileType": "pdf"},
         {"ID_GUID": G_151, "BinaryFile": _file("iot_044.docx"), "FileType": "docx"},
         {"ID_GUID": G_149, "BinaryFile": _file("ukazanie_149_scan.tif"), "FileType": "tif"},
-        {"ID_GUID": G_162, "BinaryFile": OLD_DOC, "FileType": "doc"},
+        {"ID_GUID": G_162, "BinaryFile": _file("ukazanie_162.doc"), "FileType": "doc"},
         {"ID_GUID": G_655, "BinaryFile": b"", "FileType": "pdf"},
         {"ID_GUID": G_ORPHAN, "BinaryFile": _file("reglament_to.pdf"), "FileType": "pdf"},
     ]

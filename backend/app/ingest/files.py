@@ -2,8 +2,8 @@
 
 Тип определяем по первым байтам, а не по расширению: источник может прислать
 «приказ.pdf», который на деле DOCX, или файл без расширения (бинарники из MS SQL
-приходят вообще без имени). Поддерживаются PDF, DOCX и сканы-картинки TIFF/PNG/JPEG.
-Старый Word (.doc) узнаём, но пока не разбираем — понятная ошибка в отчёте.
+приходят вообще без имени). Поддерживаются PDF, DOCX, старый Word (.doc)
+и сканы-картинки TIFF/PNG/JPEG.
 """
 
 import zipfile
@@ -11,24 +11,33 @@ from pathlib import Path
 from typing import Literal
 
 from app.config import Settings
+from app.ingest.doc import parse_doc
 from app.ingest.docx import parse_docx
 from app.ingest.errors import ParseError
 from app.ingest.image import parse_image
 from app.ingest.parsed import ParsedFile
 from app.ingest.pdf import parse_pdf
 
-FileType = Literal["pdf", "docx", "tiff", "png", "jpeg"]
+FileType = Literal["pdf", "docx", "doc", "tiff", "png", "jpeg"]
 
 MIME = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
     "tiff": "image/tiff",
     "png": "image/png",
     "jpeg": "image/jpeg",
 }
-EXTENSIONS = {"pdf": "pdf", "docx": "docx", "tiff": "tif", "png": "png", "jpeg": "jpg"}
+EXTENSIONS = {
+    "pdf": "pdf",
+    "docx": "docx",
+    "doc": "doc",
+    "tiff": "tif",
+    "png": "png",
+    "jpeg": "jpg",
+}
 
-# Составной документ OLE: старые .doc, .xls, .msg. Разбирать их пока нечем.
+# Составной документ OLE: старые .doc (а также .xls, .msg — их не разбираем).
 OLE_MAGIC = bytes.fromhex("D0CF11E0A1B11AE1")
 
 
@@ -55,6 +64,8 @@ def detect_type(path: Path) -> FileType | None:
     kind = sniff(head)
     if kind in ("pdf", "tiff", "png", "jpeg"):
         return kind  # type: ignore[return-value]
+    if kind == "ole":
+        return "doc"  # не Word (.xls и т. п.) — понятная ошибка в parse_doc
     if head.startswith(b"PK"):
         try:
             with zipfile.ZipFile(path) as z:
@@ -70,21 +81,18 @@ def parse_file(path: Path, name: str, settings: Settings) -> tuple[FileType, Par
         raise ParseError(f"Файл «{name}» пустой (0 байт)")
     kind = detect_type(path)
     if kind is None:
-        with path.open("rb") as f:
-            if f.read(8).startswith(OLE_MAGIC):
-                raise ParseError(
-                    f"Файл «{name}»: старый формат Word/Excel (.doc/.xls) пока не поддерживается"
-                )
         # Расширение подскажет, что это было, — для понятного сообщения.
         if name.lower().endswith(".pdf"):
             raise ParseError(f"PDF «{name}» не открывается: файл повреждён")
         if name.lower().endswith(".docx"):
             raise ParseError(f"DOCX «{name}» не открывается: файл повреждён")
         raise ParseError(
-            f"Файл «{name}»: формат не поддерживается (нужен PDF, DOCX или скан TIFF/PNG/JPEG)"
+            f"Файл «{name}»: формат не поддерживается (нужен PDF, DOCX, DOC или скан TIFF/PNG/JPEG)"
         )
     if kind == "pdf":
         return kind, parse_pdf(path, settings)
     if kind == "docx":
         return kind, parse_docx(path)
+    if kind == "doc":
+        return kind, parse_doc(path)
     return kind, parse_image(path, settings)

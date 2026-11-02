@@ -46,6 +46,7 @@
 | python-docx, lxml | MIT / BSD-3 | Разбор DOCX |
 | cryptography, charset-normalizer | Apache-2.0 или BSD / MIT | Зависимости pdfminer.six (зашифрованные PDF, кодировки) |
 | python-tds (pytds) | MIT | Подключение к MS SQL Server — источнику документов. Чистый Python: не нужен ODBC-драйвер Microsoft (msodbcsql, проприетарная лицензия) и сборка на заводе. pymssql не берём: LGPL |
+| olefile | BSD-2 | Чтение контейнера OLE старых файлов Word (.doc); сам текст и таблицы разбирает наш код по открытой спецификации [MS-DOC]. LibreOffice для конвертации не берём: большой образ и MPL-2.0 |
 | pyOpenSSL | Apache-2.0 | Шифрование (TLS) соединения python-tds с SQL Server |
 | python-multipart | Apache-2.0 | Приём файла при ручной загрузке |
 | tzdata | Apache-2.0 | Часовой пояс завода для ночной сверки |
@@ -54,6 +55,7 @@
 | tokenizers (HuggingFace) | Apache-2.0 | Токенизатор реранкера. Ставится без зависимостей (`requirements-nodeps.txt`): иначе тянет huggingface_hub → tqdm (MPL-2.0), а скачивать модели из интернета нам не нужно |
 | onnx | Apache-2.0 | Только тесты: игрушечная модель для проверки реранкера |
 | reportlab | BSD | Только генерация тестовых PDF (`fakes/make_fixtures.py`), в образ не входит |
+| LibreOffice | MPL-2.0 | Только на машине разработчика: один раз сделать тестовые .doc (`fakes/make_fixtures.py`). В образ и на завод не попадает |
 | pytest, pytest-asyncio | MIT / Apache-2.0 | только разработка |
 | Ruff | MIT | только разработка |
 

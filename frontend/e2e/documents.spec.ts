@@ -71,7 +71,7 @@ test('ручная загрузка: администратор открывае
   await admin.goto('/admin/documents')
   await admin.getByRole('button', { name: 'Загрузить документ' }).click()
   const dlg = admin.getByRole('dialog', { name: 'Загрузить документ' })
-  await dlg.getByLabel('Файл PDF или DOCX').setInputFiles('../backend/fakes/files/iot_044.docx')
+  await dlg.getByLabel('Файл PDF, DOCX или DOC').setInputFiles('../backend/fakes/files/iot_044.docx')
   await dlg.getByLabel('Название').fill('Памятка электросварщику (для T-0001)')
   await dlg.getByRole('button', { name: 'Загрузить' }).click()
   await expect(admin.locator('.page-h .badge', { hasText: 'Готово' })).toBeVisible({ timeout: 60_000 })
