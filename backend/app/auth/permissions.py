@@ -19,8 +19,8 @@ class Permission:
     code: str
     title: str
     group: str
-    # Можно ли выдать это право гостю (без входа). Гостю доступны только общие документы,
-    # поэтому таких прав ровно одно — search.common.
+    # Можно ли выдать это право гостю (без входа). Таких прав ровно одно — search.common
+    # (открыть чат). Документов гость не получает никогда: app/access/service.resolve_access.
     guest_allowed: bool = False
     # Пометка «скоро» для навыков, которые ещё не реализованы.
     coming_soon: bool = False

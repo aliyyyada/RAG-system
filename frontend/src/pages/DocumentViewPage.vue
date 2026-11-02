@@ -137,7 +137,8 @@ function linkTarget(l: GraphLink & { dir: 'in' | 'out' }) {
 const kindTitle = (l: GraphLink & { dir: 'in' | 'out' }) => l.kind_label.charAt(0).toUpperCase() + l.kind_label.slice(1)
 
 const mainFile = computed(() => doc.value?.files[0] ?? null)
-const fileKind = (mime: string) => (mime.includes('pdf') ? 'PDF' : 'DOCX')
+const fileKind = (mime: string) =>
+  mime.includes('pdf') ? 'PDF' : mime.startsWith('image/') ? mime.slice(6).toUpperCase() : 'DOCX'
 </script>
 
 <template>

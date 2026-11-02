@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,7 @@ async def create_source(
     adapter: str = "http_json",
     sync_interval_minutes: int = 15,
     reconcile_hour: int = 2,
+    config: dict[str, Any] | None = None,
 ) -> Source:
     if await session.scalar(select(Source).where(Source.code == code)):
         raise ServiceError("code_taken", f"Источник с кодом {code} уже есть")
@@ -47,6 +49,7 @@ async def create_source(
         adapter=adapter,
         sync_interval_minutes=sync_interval_minutes,
         reconcile_hour=reconcile_hour,
+        config=config or {},
     )
     session.add(source)
     await session.flush()

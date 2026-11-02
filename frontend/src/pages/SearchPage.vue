@@ -286,7 +286,7 @@ function resetFilters() {
         <div v-if="auth.isGuest" class="alert a-info">
           <AppIcon name="info" />
           <div>
-            <b>Вы вошли как гость</b>Ответы строятся только по общим документам.
+            <b>Вы вошли как гость</b>Документы доступны только после входа: войдите, чтобы искать по ним.
             <RouterLink :to="{ name: 'login' }">Войти</RouterLink>
           </div>
         </div>

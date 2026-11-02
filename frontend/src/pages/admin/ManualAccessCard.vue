@@ -64,7 +64,7 @@ async function save() {
   <div class="card">
     <div class="card-h"><h3>Кому доступен</h3></div>
     <div class="card-b stack">
-      <p v-if="isCommon" class="small muted">Документ общий: его видят все, в том числе без входа. Список ниже нужен, если снять признак «Общий».</p>
+      <p v-if="isCommon" class="small muted">Документ общий: его видят все вошедшие сотрудники. Список ниже нужен, если снять признак «Общий».</p>
       <FormError :message="error" />
       <template v-if="access">
         <div class="field">

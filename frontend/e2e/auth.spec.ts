@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { FAKE_PASSWORD, loginAs } from './helpers'
 
-test('гость видит поиск и кнопку «Войти», но не админку', async ({ page }) => {
+test('без входа открывается только страница входа', async ({ page }) => {
+  // Без входа документы не выдаются никому, поэтому гостевой режим выключен.
   await page.goto('/')
-  await expect(page.getByText('Гостевой режим')).toBeVisible()
-  await expect(page.getByText('Вы вошли как гость')).toBeVisible()
-  const nav = page.getByRole('navigation', { name: 'Разделы' })
-  await expect(nav.getByRole('link', { name: 'Поиск' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Администрирование' })).toHaveCount(0)
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByRole('link', { name: 'Продолжить без входа' })).toHaveCount(0)
+  await page.goto('/documents')
+  await expect(page).toHaveURL(/\/login\?next=(%2F|\/)documents/)
 
   // Прямой переход в админку без входа ведёт на страницу входа.
   await page.goto('/admin/users')
@@ -18,9 +18,7 @@ test('страница входа как в макете', async ({ page }) => {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'Поиск по документам' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Вход' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Продолжить без входа' })).toBeVisible()
-  await page.getByRole('link', { name: 'Продолжить без входа' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible()
 })
 
 test('неверный пароль: сообщение и счётчик попыток', async ({ page }) => {
@@ -45,9 +43,9 @@ test('вход сотрудника через внешний сервис и в
 
   await page.getByRole('button', { name: 'Меню пользователя' }).click()
   await page.getByRole('menuitem', { name: 'Выйти', exact: true }).click()
-  await expect(page.getByText('Гостевой режим')).toBeVisible()
+  await expect(page).toHaveURL(/\/login/)
   await page.reload()
-  await expect(page.getByText('Гостевой режим')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Вход' })).toBeVisible()
 })
 
 test('обычный пользователь не попадает в админку', async ({ page }) => {

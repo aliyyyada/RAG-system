@@ -23,10 +23,10 @@ async function askUntilCited(page: Page, question: string) {
   }).toPass({ timeout: 120_000 })
 }
 
-test('гость получает ответ по общим документам и открывает источник', async ({ page }) => {
+test('ответ по общему документу: ссылка на источник открывает документ на месте', async ({ page }) => {
   test.setTimeout(180_000)
+  await loginAs(page, 'T-0001')
   await page.goto('/')
-  await expect(page.getByText('Вы вошли как гость')).toBeVisible()
   await askUntilCited(page, 'Сколько пар рукавиц выдают электросварщику?')
 
   const answer = page.locator('.a-body').last()

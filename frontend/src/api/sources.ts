@@ -7,6 +7,7 @@ import type {
   DocumentRow,
   ManualDocumentAccess,
   Source,
+  SourceAdapter,
   SourceSettings,
 } from './types'
 
@@ -22,7 +23,7 @@ export interface DocumentQuery {
 export const sourcesApi = {
   list: () => api<Source[]>('/admin/sources'),
   get: (id: number) => api<Source>(`/admin/sources/${id}`),
-  create: (body: SourceSettings & { code: string }) =>
+  create: (body: SourceSettings & { code: string; adapter: SourceAdapter }) =>
     api<Source>('/admin/sources', { method: 'POST', body }),
   update: (id: number, body: Partial<SourceSettings>) =>
     api<Source>(`/admin/sources/${id}`, { method: 'PATCH', body }),

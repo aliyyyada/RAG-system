@@ -45,6 +45,8 @@
 | Pillow | MIT-CMU (HPND, permissive) | Картинки для OCR |
 | python-docx, lxml | MIT / BSD-3 | Разбор DOCX |
 | cryptography, charset-normalizer | Apache-2.0 или BSD / MIT | Зависимости pdfminer.six (зашифрованные PDF, кодировки) |
+| python-tds (pytds) | MIT | Подключение к MS SQL Server — источнику документов. Чистый Python: не нужен ODBC-драйвер Microsoft (msodbcsql, проприетарная лицензия) и сборка на заводе. pymssql не берём: LGPL |
+| pyOpenSSL | Apache-2.0 | Шифрование (TLS) соединения python-tds с SQL Server |
 | python-multipart | Apache-2.0 | Приём файла при ручной загрузке |
 | tzdata | Apache-2.0 | Часовой пояс завода для ночной сверки |
 | onnxruntime | MIT | Реранкер на CPU (этап 4) |

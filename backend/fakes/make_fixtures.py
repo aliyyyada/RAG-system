@@ -171,6 +171,49 @@ def scan_pdf() -> None:
     img.save(OUT / "prikaz_45_scan.pdf", "PDF", resolution=200.0)
 
 
+def scan_tiff() -> None:
+    """Скан-картинка TIFF (как бинарник из MS SQL): двухстраничный, сжатие без потерь."""
+    font = ImageFont.truetype(str(_font("DejaVuSans.ttf")), 34)
+    bold = ImageFont.truetype(str(_font("DejaVuSans-Bold.ttf")), 40)
+    pages = []
+    texts = [
+        (
+            "УКАЗАНИЕ № 149 от 31.05.2011",
+            [
+                "О проверке огнетушителей",
+                "",
+                "1. Проверить огнетушители на участке литья",
+                "до 15 июня 2011 года.",
+                "2. Ответственным назначить мастера Петрова В. Н.",
+            ],
+        ),
+        (
+            "Приложение к указанию № 149",
+            [
+                "Огнетушители ОП-5 перезаряжать раз в 5 лет.",
+                "Огнетушители ОУ-3 перезаряжать раз в 5 лет.",
+            ],
+        ),
+    ]
+    for title, lines in texts:
+        img = Image.new("L", (1654, 2339), 255)  # A4, 200 dpi
+        draw = ImageDraw.Draw(img)
+        y = 160
+        draw.text((160, y), title, font=bold, fill=0)
+        y += 110
+        for line in lines:
+            draw.text((160, y), line, font=font, fill=0)
+            y += 60
+        pages.append(img.convert("1"))
+    pages[0].save(
+        OUT / "ukazanie_149_scan.tif",
+        save_all=True,
+        append_images=pages[1:],
+        compression="group4",
+        dpi=(200, 200),
+    )
+
+
 def iot_docx() -> None:
     doc = new_docx()
     doc.add_heading("ИОТ-044. Инструкция по охране труда для электросварщика", level=0)
@@ -235,6 +278,7 @@ def main() -> None:
     prikaz_112_pdf()
     reglament_to_pdf()
     scan_pdf()
+    scan_tiff()
     iot_docx()
     polozhenie_docx()
     (OUT / "prikaz_97.pdf").write_bytes(b"")  # битый файл: 0 байт

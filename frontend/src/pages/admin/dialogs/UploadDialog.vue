@@ -78,7 +78,7 @@ async function submit() {
           <input id="up-number" v-model="number" class="input" maxlength="100" placeholder="112" />
         </div>
       </div>
-      <label class="check"><input v-model="isCommon" type="checkbox" /> Общий документ — доступен всем, в том числе без входа</label>
+      <label class="check"><input v-model="isCommon" type="checkbox" /> Общий документ — доступен всем вошедшим сотрудникам</label>
       <FormError :message="error" />
     </form>
     <template #footer>

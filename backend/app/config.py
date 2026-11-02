@@ -62,8 +62,10 @@ class Settings(BaseSettings):
     external_auth_client_key: str | None = None
     external_auth_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
 
-    # Гостевой режим: без входа доступны поиск и общие документы.
-    guest_mode_enabled: bool = True
+    # Гостевой режим: без входа открывается чат. Документов гость не получает никогда
+    # (требование заказчика от 02.11.2026), поэтому по умолчанию режим выключен и без
+    # входа открывается только страница входа.
+    guest_mode_enabled: bool = False
 
     # ---------- Документы и синхронизация (этап 2) ----------
     # Папка с файлами документов (том Docker). Имя файла = SHA-256 содержимого.
@@ -75,6 +77,9 @@ class Settings(BaseSettings):
     source_client_cert: str | None = None
     source_client_key: str | None = None
     source_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    # Логин SQL Server для источника в MS SQL (только чтение). Пароль только в .env.
+    source_mssql_user: str = ""
+    source_mssql_password: SecretStr = SecretStr("")
     # Файл больше этого размера не скачиваем (защита диска от ошибки источника).
     source_file_max_mb: int = Field(default=200, ge=1)
     # Ручная загрузка через интерфейс.

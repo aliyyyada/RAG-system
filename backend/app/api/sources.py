@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +42,8 @@ from app.models import (
     User,
 )
 from app.sources import ADAPTERS
+from app.sources.base import BadSourceData
+from app.sources.mssql import parse_address, parse_config
 
 router = APIRouter(prefix="/api/admin", tags=["admin: источники и документы"])
 
@@ -61,6 +63,29 @@ def _actor(p: Principal) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def _check_address(adapter: str, url: str) -> str:
+    """http_json — https://адрес API; mssql — mssql://сервер:порт/База."""
+    url = url.strip()
+    if adapter == "mssql":
+        try:
+            parse_address(url)
+        except BadSourceData as exc:
+            raise ValueError(str(exc)) from None
+    elif not url.startswith("https://"):
+        raise ValueError("Адрес источника должен начинаться с https://")
+    return url
+
+
+def _check_config(adapter: str, config: dict[str, Any] | None) -> dict[str, Any]:
+    """Настройки адаптера mssql проверяем сразу, а не при первой синхронизации."""
+    if adapter != "mssql":
+        return {}
+    try:
+        return parse_config(config).model_dump(exclude_defaults=True)
+    except BadSourceData as exc:
+        raise ValueError(str(exc)) from None
+
+
 class SourceSettings(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     base_url: str = Field(min_length=8, max_length=500)
@@ -68,19 +93,18 @@ class SourceSettings(BaseModel):
     sync_interval_minutes: int = Field(default=15, ge=1, le=24 * 60)
     overlap_minutes: int = Field(default=60, ge=0, le=7 * 24 * 60)
     reconcile_hour: int = Field(default=2, ge=0, le=23)
-
-    @field_validator("base_url")
-    @classmethod
-    def _https(cls, v: str) -> str:
-        v = v.strip()
-        if not v.startswith("https://"):
-            raise ValueError("Адрес источника должен начинаться с https://")
-        return v
+    config: dict[str, Any] | None = None
 
 
 class SourceCreate(SourceSettings):
     code: str = Field(pattern=r"^[a-z][a-z0-9_-]{1,31}$")
-    adapter: Literal["http_json"] = "http_json"
+    adapter: Literal["mssql", "http_json"] = "mssql"
+
+    @model_validator(mode="after")
+    def _by_adapter(self) -> "SourceCreate":
+        self.base_url = _check_address(self.adapter, self.base_url)
+        self.config = _check_config(self.adapter, self.config)
+        return self
 
 
 class SourceUpdate(BaseModel):
@@ -90,13 +114,8 @@ class SourceUpdate(BaseModel):
     sync_interval_minutes: int | None = Field(default=None, ge=1, le=24 * 60)
     overlap_minutes: int | None = Field(default=None, ge=0, le=7 * 24 * 60)
     reconcile_hour: int | None = Field(default=None, ge=0, le=23)
-
-    @field_validator("base_url")
-    @classmethod
-    def _https(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip().startswith("https://"):
-            raise ValueError("Адрес источника должен начинаться с https://")
-        return v.strip() if v else v
+    # Настройки адаптера целиком (заменяют прежние).
+    config: dict[str, Any] | None = None
 
 
 class ReportOut(BaseModel):
@@ -121,6 +140,8 @@ class SourceOut(BaseModel):
     name: str
     adapter: str
     base_url: str
+    # Для mssql — все настройки с подставленными значениями по умолчанию.
+    config: dict[str, Any]
     enabled: bool
     sync_interval_minutes: int
     overlap_minutes: int
@@ -252,6 +273,15 @@ async def _get_source(session: AsyncSession, source_id: int) -> Source:
     return source
 
 
+def _config_out(source: Source) -> dict[str, Any]:
+    if source.adapter != "mssql":
+        return dict(source.config or {})
+    try:
+        return parse_config(source.config).model_dump()
+    except BadSourceData:
+        return dict(source.config or {})
+
+
 async def _source_out(session: AsyncSession, source: Source) -> SourceOut:
     rep = await source_report(session, source)
     coll_id = await session.scalar(select(Collection.id).where(Collection.source_id == source.id))
@@ -261,6 +291,7 @@ async def _source_out(session: AsyncSession, source: Source) -> SourceOut:
         name=source.name,
         adapter=source.adapter,
         base_url=source.base_url,
+        config=_config_out(source),
         enabled=source.enabled,
         sync_interval_minutes=source.sync_interval_minutes,
         overlap_minutes=source.overlap_minutes,
@@ -298,6 +329,7 @@ async def create_source(
             adapter=body.adapter,
             sync_interval_minutes=body.sync_interval_minutes,
             reconcile_hour=body.reconcile_hour,
+            config=body.config,
         )
     except service.ServiceError as exc:
         raise _err(409, exc.code, exc.message) from None
@@ -309,7 +341,13 @@ async def create_source(
         actor=principal.user,
         target_type="source",
         target_id=source.id,
-        details={"code": body.code, "name": body.name, "base_url": body.base_url},
+        details={
+            "code": body.code,
+            "name": body.name,
+            "adapter": body.adapter,
+            "base_url": body.base_url,
+            "config": body.config,
+        },
         ip=client_ip(request),
     )
     await session.commit()
@@ -331,6 +369,13 @@ async def update_source(
 ) -> SourceOut:
     source = await _get_source(session, source_id)
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    try:
+        if "base_url" in changes:
+            changes["base_url"] = _check_address(source.adapter, changes["base_url"])
+        if "config" in changes:
+            changes["config"] = _check_config(source.adapter, changes["config"])
+    except ValueError as exc:
+        raise _err(422, "bad_settings", str(exc)) from None
     if "name" in changes and changes["name"] != source.name:
         clash = await session.scalar(
             select(Collection).where(
