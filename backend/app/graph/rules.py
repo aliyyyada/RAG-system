@@ -70,6 +70,7 @@ async def resolve_target(
             )
             .where(
                 Document.deleted_at.is_(None),
+                Document.check_run_id.is_(None),
                 Document.number.is_not(None),
                 func.lower(Document.number).contains(core),
             )
@@ -245,6 +246,8 @@ async def backfill_tick(session: AsyncSession, limit: int = 500) -> int:
             .where(
                 Document.indexed_version.is_not(None),
                 Document.deleted_at.is_(None),
+                Document.is_protected.is_(False),  # ЕПоЗ в граф связей не берём
+                Document.check_run_id.is_(None),
                 (Document.links_version.is_(None))
                 | (Document.links_version != Document.indexed_version),
             )

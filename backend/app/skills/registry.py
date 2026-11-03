@@ -22,5 +22,6 @@ SKILLS: tuple[Skill, ...] = (
         name="epoz_check",
         title="Проверка папки на соответствие ЕПОЗ",
         description="Проверяет папку документов на соответствие ЕПОЗ (см. open-questions #10).",
+        available=True,
     ),
 )

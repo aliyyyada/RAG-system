@@ -475,7 +475,7 @@ async def new_callback_token(
 
 @router.get("/collections", response_model=list[CollectionOut])
 async def list_collections(_: IntegrationsAdmin, session: SessionDep) -> list[CollectionOut]:
-    alive = Document.deleted_at.is_(None)
+    alive = Document.deleted_at.is_(None) & Document.check_run_id.is_(None)
     docs = (
         select(
             Document.collection_id,
@@ -551,7 +551,7 @@ async def list_documents(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> DocumentPage:
-    cond = []
+    cond = [Document.check_run_id.is_(None)]  # пакеты проверок ЕПоЗ видит только их автор
     if source_id is not None:
         cond.append(Document.source_id == source_id)
     if collection_id is not None:
@@ -593,7 +593,7 @@ async def list_documents(
 
 async def _get_document(session: AsyncSession, document_id: int) -> Document:
     doc = await session.get(Document, document_id)
-    if doc is None:
+    if doc is None or doc.check_run_id is not None:
         raise _err(404, "not_found", "Документ не найден")
     return doc
 
@@ -702,6 +702,18 @@ async def file_text(
     return {"id": f.id, "name": f.name, "text": f.text, "warnings": f.warnings}
 
 
+def _guard_protected(doc: Document) -> None:
+    """Документы ЕПоЗ обновляются только новой редакцией (страница «ЕПоЗ»): общие кнопки
+    «исключить», «переиндексировать», «изменить» и права по отдельному документу — запрещены."""
+    if doc.is_protected:
+        raise _err(
+            409,
+            "protected",
+            "Документ ЕПоЗ защищён: его можно только заменить новой редакцией "
+            "на странице «ЕПоЗ» в администрировании",
+        )
+
+
 async def _doc_action(
     session: AsyncSession,
     principal: Principal,
@@ -753,6 +765,7 @@ async def _requeue(
     force: bool,
 ) -> DocumentRow:
     doc = await _get_document(session, document_id)
+    _guard_protected(doc)
     try:
         await service.retry_document(session, doc, settings, actor=_actor(principal), force=force)
     except service.ServiceError as exc:
@@ -774,6 +787,7 @@ async def exclude_document(
     request: Request,
 ) -> DocumentRow:
     doc = await _get_document(session, document_id)
+    _guard_protected(doc)
     await service.set_excluded(session, doc, body.excluded, actor=_actor(principal))
     await _doc_action(session, principal, request, doc, "document.exclude", excluded=body.excluded)
     await session.commit()
@@ -792,6 +806,7 @@ async def update_document(
     """Признак «общий» и название меняются только у ручных загрузок: у документов
     источника их задаёт источник, и следующая синхронизация вернула бы своё значение."""
     doc = await _get_document(session, document_id)
+    _guard_protected(doc)
     changes = body.model_dump(exclude_none=True)
     if doc.source_id is not None and changes:
         raise _err(409, "from_source", "У документа источника это поле задаёт сам источник")
@@ -918,6 +933,7 @@ async def set_document_access(
     `create-admin`): когда он войдёт через внешний сервис, доступ уже будет на месте.
     """
     doc = await _manual_document(session, document_id)
+    _guard_protected(doc)  # права на ЕПоЗ — одной группой на весь комплект (страница «ЕПоЗ»)
     numbers = sorted({n.strip() for n in body.personnel_numbers if n.strip()})
     if any(len(n) > 64 for n in numbers):
         raise _err(422, "bad_personnel_number", "Слишком длинный табельный номер")

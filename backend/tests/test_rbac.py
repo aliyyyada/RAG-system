@@ -188,7 +188,7 @@ async def test_permission_catalog_has_skills(client: httpx.AsyncClient) -> None:
     token = await _admin(client)
     r = await client.get("/api/admin/permissions", headers=auth(token))
     codes = {p["code"]: p for p in r.json()}
-    assert codes["skill.epoz_check.use"]["coming_soon"] is True
+    assert codes["skill.epoz_check.use"]["coming_soon"] is False  # навык «Проверка ЕПоЗ» готов
     assert codes["search.common"]["guest_allowed"] is True
     assert codes["admin.users"]["guest_allowed"] is False
 

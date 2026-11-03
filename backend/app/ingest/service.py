@@ -83,6 +83,8 @@ async def retry_document(
     force: bool = False,
 ) -> None:
     """Кнопки «Повторить» (документ с ошибкой) и «Переиндексировать» (force=True)."""
+    if doc.is_protected:
+        raise ServiceError("protected", "Документ ЕПоЗ обновляется только новой редакцией")
     if doc.deleted_at is not None:
         raise ServiceError("deleted", "Документ удалён в источнике")
     doc.attempts = 0
@@ -114,6 +116,8 @@ async def retry_failed(
 async def set_excluded(
     session: AsyncSession, doc: Document, excluded: bool, *, actor: str | None
 ) -> None:
+    if doc.is_protected:
+        raise ServiceError("protected", "Документ ЕПоЗ нельзя исключить из поиска")
     if doc.is_excluded != excluded:
         doc.is_excluded = excluded
         await add_event(session, doc.id, "excluded" if excluded else "included", actor=actor)

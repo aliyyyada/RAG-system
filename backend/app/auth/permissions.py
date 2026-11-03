@@ -40,6 +40,7 @@ ADMIN_USERS = "admin.users"
 ADMIN_ROLES = "admin.roles"
 ADMIN_INTEGRATIONS = "admin.integrations"
 AUDIT_VIEW = "audit.view"
+EPOZ_MANAGE = "epoz.manage"
 
 _BASE: tuple[Permission, ...] = (
     Permission(SEARCH_COMMON, "Поиск и вопросы по общим документам", GROUP_SEARCH, True),
@@ -51,6 +52,7 @@ _BASE: tuple[Permission, ...] = (
     Permission(ADMIN_ROLES, "Роли и права", GROUP_ADMIN),
     Permission(ADMIN_INTEGRATIONS, "Источники и синхронизация", GROUP_ADMIN),
     Permission(AUDIT_VIEW, "Журнал аудита", GROUP_ADMIN),
+    Permission(EPOZ_MANAGE, "ЕПоЗ и справочник ОКПД2: загрузка редакций", GROUP_ADMIN),
 )
 
 
@@ -75,4 +77,4 @@ def guest_allowed_codes() -> frozenset[str]:
 
 
 # Права, которые открывают раздел «Администрирование» в шапке.
-ADMIN_AREA = frozenset({ADMIN_USERS, ADMIN_ROLES, ADMIN_INTEGRATIONS, AUDIT_VIEW})
+ADMIN_AREA = frozenset({ADMIN_USERS, ADMIN_ROLES, ADMIN_INTEGRATIONS, AUDIT_VIEW, EPOZ_MANAGE})

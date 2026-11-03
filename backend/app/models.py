@@ -441,6 +441,14 @@ class Document(Base):
     # фрагментов при этом нашлось (из них считается прогноз времени в админке).
     contra_version: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     contra_pairs: Mapped[int | None] = mapped_column(Integer)
+    # Проверка ЕПоЗ (backend/epoz). Защищённый документ (ЕПоЗ) нельзя удалить, исключить из
+    # поиска и переразобрать общим способом: триггер в БД и проверки в API. epoz_part —
+    # часть комплекта («main» — Положение, «app5» — Приложение 5).
+    is_protected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    epoz_part: Mapped[str | None] = mapped_column(String(16))
+    # Документ принадлежит проверке закупочного пакета (живёт только в сессии пользователя,
+    # в общий поиск, граф и противоречия не попадает). Внешний ключ — в миграции.
+    check_run_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

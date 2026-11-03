@@ -22,6 +22,7 @@ from app.auth.tokens import REFRESH_COOKIE, REFRESH_COOKIE_PATH
 from app.config import Settings
 from app.models import User
 from app.skills.registry import SKILLS
+from epoz.checks.service import delete_user_runs
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -171,12 +172,15 @@ async def logout(
     request: Request,
     response: Response,
     session: SessionDep,
+    settings: SettingsDep,
     refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE)] = None,
 ) -> None:
     """Выход на этом устройстве. Работает и с истёкшим access-токеном."""
     if refresh_token:
         row = await service.revoke_session_by_token(session, refresh_token)
         if row is not None:
+            # Проверки ЕПоЗ живут только в сессии: при выходе данные пакета стираются сразу.
+            await delete_user_runs(session, settings, row.user_id, row.id)
             user = await session.get(User, row.user_id)
             if user is not None:
                 await service.log_logout(
@@ -192,11 +196,13 @@ async def logout(
 async def logout_all(
     response: Response,
     session: SessionDep,
+    settings: SettingsDep,
     principal: Annotated[Principal, Depends(require_user)],
 ) -> None:
     """Выйти на всех устройствах (отозвать все свои сессии)."""
     assert principal.user is not None
     await service.revoke_user_sessions(session, principal.user.id)
+    await delete_user_runs(session, settings, principal.user.id)
     await session.commit()
     _clear_refresh_cookie(response)
 

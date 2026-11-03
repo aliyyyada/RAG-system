@@ -47,6 +47,7 @@
 | cryptography, charset-normalizer | Apache-2.0 или BSD / MIT | Зависимости pdfminer.six (зашифрованные PDF, кодировки) |
 | python-tds (pytds) | MIT | Подключение к MS SQL Server — источнику документов. Чистый Python: не нужен ODBC-драйвер Microsoft (msodbcsql, проприетарная лицензия) и сборка на заводе. pymssql не берём: LGPL |
 | olefile | BSD-2 | Чтение контейнера OLE старых файлов Word (.doc); сам текст и таблицы разбирает наш код по открытой спецификации [MS-DOC]. LibreOffice для конвертации не берём: большой образ и MPL-2.0 |
+| openpyxl, et_xmlfile | MIT | Чтение справочника ОКПД2 из Excel (загрузка в админке); проверка ЕПоЗ |
 | pyOpenSSL | Apache-2.0 | Шифрование (TLS) соединения python-tds с SQL Server |
 | python-multipart | Apache-2.0 | Приём файла при ручной загрузке |
 | tzdata | Apache-2.0 | Часовой пояс завода для ночной сверки |

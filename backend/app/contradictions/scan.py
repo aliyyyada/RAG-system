@@ -212,6 +212,7 @@ async def backfill_tick(session: AsyncSession, limit: int = 200) -> int:
                 SELECT d.id FROM documents d
                 WHERE d.indexed_version IS NOT NULL AND d.deleted_at IS NULL
                   AND NOT d.is_excluded
+                  AND NOT d.is_protected AND d.check_run_id IS NULL
                   AND d.contra_version IS DISTINCT FROM d.indexed_version
                   AND NOT EXISTS (SELECT 1 FROM chunks c
                                   WHERE c.document_id = d.id AND c.embedding IS NULL)

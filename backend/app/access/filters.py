@@ -23,6 +23,7 @@ def alive() -> ColumnElement[bool]:
         Document.deleted_at.is_(None),
         Document.is_excluded.is_(False),
         Document.indexed_version.is_not(None),
+        Document.check_run_id.is_(None),  # пакет проверки ЕПоЗ — только внутри своей проверки
     )
 
 

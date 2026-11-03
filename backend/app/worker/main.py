@@ -29,6 +29,8 @@ from app.ingest.errors import IngestError
 from app.search import indexer
 from app.worker import queue
 from app.worker.queue import ClaimedJob, JobDeferred
+from epoz.checks import runner as epoz_runner
+from epoz.checks import service as epoz_service
 
 log = logging.getLogger("worker")
 
@@ -50,6 +52,7 @@ HANDLERS: dict[str, Handler] = {
     graph_rules.RULES_JOB: graph_rules.handle_rules,
     graph_extract.EXTRACT_JOB: graph_extract.handle_extract,
     graph_estimate.ESTIMATE_JOB: graph_estimate.handle_estimate,
+    epoz_runner.JOB_KIND: epoz_runner.handle_check_run,
     contra_scan.SCAN_JOB: contra_scan.handle_scan,
 }
 
@@ -111,6 +114,7 @@ async def main() -> None:
                     links = await graph_rules.backfill_tick(session)
                     extracts = await graph_extract.backfill_tick(session)
                     await graph_extract.cleanup_orphans(session)
+                    gone = await epoz_service.cleanup_expired(session, settings)
                     contra = await contra_scan.backfill_tick(session)
                 if planned:
                     log.info("scheduled: %s", planned)
@@ -124,6 +128,8 @@ async def main() -> None:
                     log.info(
                         "удалено чатов старше %d дней: %d", settings.chat_history_days, removed
                     )
+                if gone:
+                    log.info("проверки ЕПоЗ: удалено по окончании сессии или простою: %d", gone)
             except Exception:  # noqa: BLE001 — планировщик не должен ронять worker
                 log.exception("scheduler error")
         try:

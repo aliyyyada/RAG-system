@@ -177,6 +177,15 @@ class Settings(BaseSettings):
     # Пар за один заход задачи contra_scan (дальше задача встаёт в очередь снова).
     contra_pairs_per_job: int = Field(default=10, ge=1, le=500)
 
+    # ---------- Проверка ЕПоЗ (backend/epoz) ----------
+    # Критерии, где нужен смысл (соответствие ТЗ пункту 10.3, предмет договора), используют модель;
+    # false — только правила (критерии отвечают «нужна ручная проверка»).
+    epoz_use_llm: bool = True
+    # Проверка живёт, пока жива сессия входа, и не дольше этого простоя (минут без обращений).
+    check_idle_minutes: int = Field(default=120, ge=5, le=24 * 60)
+    check_max_files: int = Field(default=20, ge=1, le=100)
+    check_max_file_mb: int = Field(default=100, ge=1)
+
     worker_poll_seconds: float = 2.0
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.

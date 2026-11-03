@@ -21,6 +21,7 @@ const ADMIN_PAGES: Record<string, () => Promise<unknown>> = {
   'admin-documents': () => import('@/pages/admin/DocumentsPage.vue'),
   'admin-graph': () => import('@/pages/admin/GraphPage.vue'),
   'admin-contradictions': () => import('@/pages/admin/ContradictionsPage.vue'),
+  'admin-epoz': () => import('@/pages/epoz/EpozAdminPage.vue'),
 }
 
 export const ADMIN_SECTIONS = [
@@ -29,6 +30,7 @@ export const ADMIN_SECTIONS = [
   { group: 'Документы', name: 'admin-sources', path: 'sources', title: 'Источники', icon: 'db', permissions: ['admin.integrations'] },
   { group: 'Документы', name: 'admin-documents', path: 'documents', title: 'Коллекции и документы', icon: 'doc', permissions: ['admin.integrations'] },
   { group: 'Документы', name: 'admin-graph', path: 'graph', title: 'Граф знаний', icon: 'split', permissions: ['admin.integrations'] },
+  { group: 'Документы', name: 'admin-epoz', path: 'epoz', title: 'ЕПоЗ', icon: 'shield', permissions: ['epoz.manage'] },
   { group: 'Документы', name: 'admin-contradictions', path: 'contradictions', title: 'Поиск противоречий', icon: 'warn', permissions: ['admin.integrations'] },
   { group: 'Система', name: 'admin-audit', path: 'audit', title: 'Журнал аудита', icon: 'list', permissions: ['audit.view'], stage: 7 },
   { group: 'Система', name: 'admin-health', path: 'health', title: 'Состояние системы', icon: 'cpu', permissions: ['admin.integrations'], stage: 7 },
@@ -43,6 +45,7 @@ export const router = createRouter({
     { path: '/', name: 'search', component: () => import('@/pages/SearchPage.vue'), meta: { permissions: ['search.common'], title: 'Поиск' } },
     { path: '/documents', name: 'documents', component: () => import('@/pages/DocumentsPage.vue'), meta: { permissions: ['search.common', 'documents.view'], title: 'Документы' } },
     { path: '/documents/:id(\\d+)', name: 'document', component: () => import('@/pages/DocumentViewPage.vue'), meta: { permissions: ['search.common', 'documents.view'], title: 'Документ' } },
+    { path: '/epoz-check', name: 'epoz-check', component: () => import('@/pages/epoz/EpozCheckPage.vue'), meta: { requiresAuth: true, permissions: ['skill.epoz_check.use'], title: 'Проверка ЕПоЗ' } },
     { path: '/contradictions', name: 'contradictions', component: () => import('@/pages/ContradictionsPage.vue'), meta: { requiresAuth: true, permissions: ['contradictions.view'], title: 'Противоречия' } },
     {
       path: '/admin',

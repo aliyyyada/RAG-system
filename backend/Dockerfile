@@ -22,6 +22,8 @@ RUN pip install -r requirements.txt && pip install --no-deps -r requirements-nod
 COPY alembic.ini pyproject.toml ./
 COPY migrations ./migrations
 COPY app ./app
+# Проверка ЕПоЗ: весь код и скрипты функционала (см. epoz/README.md)
+COPY epoz ./epoz
 # Фейковый внешний сервис (только разработка; в prod контейнер не запускается)
 COPY fakes ./fakes
 

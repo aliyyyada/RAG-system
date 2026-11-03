@@ -434,6 +434,7 @@ async def backfill_tick(session: AsyncSession, limit: int = 200) -> int:
                 SELECT DISTINCT c.document_id FROM chunks c
                 JOIN documents d ON d.id = c.document_id
                 WHERE c.graph_state IS NULL AND d.deleted_at IS NULL AND NOT d.is_excluded
+                  AND NOT d.is_protected AND d.check_run_id IS NULL
                   AND NOT EXISTS (
                       SELECT 1 FROM jobs j
                       WHERE j.dedupe_key = 'graph_llm:' || c.document_id

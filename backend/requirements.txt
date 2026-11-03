@@ -33,3 +33,6 @@ python-tds==1.17.1
 pyOpenSSL==26.4.0
 # Старый Word (.doc) из источника: контейнер OLE читает olefile (BSD), текст — наш код
 olefile==0.47
+# Справочник ОКПД2 из Excel (одноразовый импорт в админке, backend/epoz/okpd2.py)
+openpyxl==3.1.5
+et_xmlfile==2.0.0

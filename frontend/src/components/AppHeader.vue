@@ -43,6 +43,12 @@ const nav = computed(() =>
       active: route.name === 'contradictions',
     },
     {
+      to: '/epoz-check',
+      label: 'Проверка ЕПоЗ',
+      show: !auth.isGuest && auth.can('skill.epoz_check.use'),
+      active: route.name === 'epoz-check',
+    },
+    {
       to: '/admin',
       label: 'Администрирование',
       show: !auth.isGuest && !!auth.me?.can_admin,

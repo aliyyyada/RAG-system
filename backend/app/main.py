@@ -19,6 +19,8 @@ from app.api import (
 )
 from app.config import get_settings
 from app.db import dispose_engine
+from epoz import api as epoz_api
+from epoz.checks import api as checks_api
 
 
 @asynccontextmanager
@@ -46,6 +48,9 @@ def create_app() -> FastAPI:
     app.include_router(integration.router)
     app.include_router(chat.router)
     app.include_router(graph.router)
+    app.include_router(epoz_api.router)
+    app.include_router(epoz_api.okpd_router)
+    app.include_router(checks_api.router)
     app.include_router(contradictions.router)
     return app
 

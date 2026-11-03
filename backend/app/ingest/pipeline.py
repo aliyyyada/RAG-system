@@ -153,6 +153,8 @@ async def process_document(
         doc = await s.get(Document, document_id, with_for_update=True)
         if doc is None or doc.deleted_at is not None:
             return
+        if doc.epoz_part is not None or doc.check_run_id is not None:
+            return  # ЕПоЗ и пакеты проверки разбирает backend/epoz своим разбором
         source = await s.get(Source, doc.source_id) if doc.source_id else None
         set_status(doc, "processing")
         snapshot = _DocSnapshot(doc)
