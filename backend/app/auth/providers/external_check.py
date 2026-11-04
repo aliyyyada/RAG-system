@@ -14,6 +14,7 @@
 
 import logging
 import ssl
+from pathlib import Path
 
 import httpx
 
@@ -32,7 +33,16 @@ class ExternalCheckProvider:
         self._transport = transport
         self._verify: ssl.SSLContext | bool = True
         if transport is None:
-            ctx = ssl.create_default_context(cafile=settings.external_auth_ca_file)
+            cafile = settings.external_auth_ca_file
+            if cafile and not Path(cafile).is_file():
+                # Нет файла CA (например, стенд без сертификатов): вход локальных учёток
+                # не должен падать. Внешний сервис проверяем по системным CA — с
+                # самоподписанным сертификатом он просто не ответит (fail-closed).
+                log.warning(
+                    "EXTERNAL_AUTH_CA_FILE=%s: файла нет, используются системные CA", cafile
+                )
+                cafile = None
+            ctx = ssl.create_default_context(cafile=cafile)
             if settings.external_auth_client_cert:
                 ctx.load_cert_chain(
                     settings.external_auth_client_cert, settings.external_auth_client_key

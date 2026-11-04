@@ -66,3 +66,13 @@ async def test_fake_service_contract() -> None:
     assert ok.profile is not None and ok.profile.department == "Отдел ИТ"
     assert (await provider.authenticate("00017", "nope")).outcome is AuthOutcome.INVALID
     assert (await provider.authenticate("nobody", FAKE_PASSWORD)).outcome is AuthOutcome.INVALID
+
+
+def test_missing_ca_file_does_not_break_provider(caplog: pytest.LogCaptureFixture) -> None:
+    """Стенд без сертификатов: файла CA нет — провайдер создаётся, в журнале предупреждение."""
+    from app.auth.providers.external_check import ExternalCheckProvider
+    from app.config import get_settings
+
+    settings = get_settings().model_copy(update={"external_auth_ca_file": "/nonexistent/ca.crt"})
+    ExternalCheckProvider(settings)
+    assert "файла нет" in caplog.text
