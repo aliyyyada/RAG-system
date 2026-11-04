@@ -161,7 +161,9 @@ async def resolve_access(
     stale = [s for s in sources if (c := cached.get(s.id)) is None or c.expires_at <= now]
     ok_ids = {s.id for s in sources if s not in stale and cached[s.id].ok}
     if stale:
-        results = await asyncio.gather(*(_fetch(s, user.personnel_number, settings) for s in stale))
+        # ID для источника: табельный номер или ID, заданный администратором (source_user_id).
+        login = user.source_login
+        results = await asyncio.gather(*(_fetch(s, login, settings) for s in stale))
         await _store(user.id, list(results), settings)
         ok_ids |= {r.source_id for r in results if r.ids is not None}
     unavailable = tuple(UnavailableSource(s.id, s.name) for s in sources if s.id not in ok_ids)

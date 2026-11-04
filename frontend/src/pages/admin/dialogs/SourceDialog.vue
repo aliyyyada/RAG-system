@@ -23,9 +23,16 @@ const form = reactive({
   overlap_minutes: 60,
   reconcile_hour: 2,
 })
+// Процедура «Электронный архив ОРД» (backend/app/sources/mssql.py, ORD_*).
+const ORD = '[factory].[dbo].[pr_ИИ - Документы (Электронный архив ОРД)]'
+const ORD_LIST = `EXEC ${ORD} @PrKor = 'Документы (список)'`
+const ORD_MARK = `EXEC ${ORD} @PrKor = 'Документы (запись)', @ID_GUID = :id`
+const ORD_ACCESS = `EXEC ${ORD} @PrKor = 'Документы (доступ)', @ID_UserBoss = :user`
+
 // Остальные поля MssqlConfig (имена колонок и т. п.) сохраняются как были.
 const sql = reactive({
-  call_sql: 'EXEC dbo.GetDocuments',
+  call_sql: ORD_LIST,
+  mark_sql: '',
   service_user: '',
   file_type_column: '',
   access_mode: 'all_authenticated' as MssqlConfig['access_mode'],
@@ -54,10 +61,11 @@ watch(open, (v) => {
     reconcile_hour: s?.reconcile_hour ?? 2,
   })
   const c = (adapter === 'mssql' ? s?.config ?? {} : {}) as Partial<MssqlConfig>
-  const { call_sql, service_user, file_type_column, access_mode, access_sql, common_sql, encrypt, ...rest } = c
+  const { call_sql, mark_sql, service_user, file_type_column, access_mode, access_sql, common_sql, encrypt, ...rest } = c
   restConfig = rest
   Object.assign(sql, {
-    call_sql: call_sql ?? 'EXEC dbo.GetDocuments',
+    call_sql: call_sql ?? ORD_LIST,
+    mark_sql: mark_sql ?? '',
     service_user: service_user ?? '',
     file_type_column: file_type_column ?? '',
     access_mode: access_mode ?? 'all_authenticated',
@@ -82,6 +90,7 @@ function config(): Record<string, unknown> | undefined {
   return {
     ...restConfig,
     call_sql: sql.call_sql.trim(),
+    mark_sql: orNull(sql.mark_sql),
     service_user: orNull(sql.service_user),
     file_type_column: orNull(sql.file_type_column),
     access_mode: sql.access_mode,
@@ -89,6 +98,11 @@ function config(): Record<string, unknown> | undefined {
     common_sql: orNull(sql.common_sql),
     encrypt: sql.encrypt,
   }
+}
+
+/** Заполнить вызовы процедурой «Электронный архив ОРД» (список → запись → доступ). */
+function useOrd() {
+  Object.assign(sql, { call_sql: ORD_LIST, mark_sql: ORD_MARK, access_mode: 'sql', access_sql: ORD_ACCESS })
 }
 
 async function save() {
@@ -136,10 +150,22 @@ async function save() {
           <input id="src-url" v-model="form.base_url" class="input mono" required pattern="mssql://.+/.+" placeholder="mssql://sql.zavod.local:1433/Docflow" />
           <span class="hint">Логин и пароль SQL Server задаются только в .env: SOURCE_MSSQL_USER и SOURCE_MSSQL_PASSWORD.</span>
         </div>
+        <div class="alert a-info">
+          <div>
+            <b>Электронный архив ОРД</b>Одна процедура: «список» — незагруженные документы, «запись» — отметка
+            «загружен» после каждого документа, «доступ» — документы пользователя по его ID.
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-left: auto" data-testid="src-ord" @click="useOrd">Заполнить</button>
+        </div>
         <div class="field">
           <label class="label" for="src-call">Вызов функции</label>
           <textarea id="src-call" v-model="sql.call_sql" class="input mono" rows="2" required />
           <span class="hint">Функция возвращает две таблицы: документы (ID_GUID, Номер, Дата, Тип, Тема…) и файлы (ID_GUID, BinaryFile, тип файла). Можно подставить :user и :since.</span>
+        </div>
+        <div class="field">
+          <label class="label" for="src-mark">Отметка «документ загружен»</label>
+          <textarea id="src-mark" v-model="sql.mark_sql" class="input mono" rows="2" placeholder="не нужно" />
+          <span class="hint">Вызывается по тому же соединению после сохранения каждого документа, :id — его ID_GUID. Если задана, вызов функции отдаёт только незагруженные документы, поэтому пропавший из ответа документ не считается удалённым.</span>
         </div>
         <div class="row" style="gap: 16px; align-items: flex-start">
           <div class="field grow">
@@ -155,7 +181,7 @@ async function save() {
           <label class="label" for="src-access">Права на документы</label>
           <select id="src-access" v-model="sql.access_mode" class="select">
             <option value="all_authenticated">Любой вошедший видит все документы источника</option>
-            <option value="sql">Спрашивать источник по табельному номеру</option>
+            <option value="sql">Спрашивать источник по ID пользователя (:user)</option>
           </select>
           <span class="hint">Без входа документы не видит никто.</span>
         </div>

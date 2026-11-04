@@ -34,6 +34,7 @@ export const adminApi = {
       role_ids: number[]
       group_ids: number[]
       password: string
+      source_user_id: string
     }>,
   ) => api<AdminUserDetail>(`/admin/users/${id}`, { method: 'PATCH', body }),
   unlock: (id: number) => api<AdminUserDetail>(`/admin/users/${id}/unlock`, { method: 'POST' }),

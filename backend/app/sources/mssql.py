@@ -25,8 +25,29 @@
 отпечаток другой → версия = время этой синхронизации → документ встаёт в очередь на
 переиндексацию. Приказ пропал из ответа → при ночной сверке он помечается удалённым.
 
-Всё, что ещё неизвестно (имя функции, параметры, имена колонок, как спрашивать права),
-задаётся в настройках источника (`sources.config`, см. MssqlConfig). Пароль — только в .env.
+С 04.11.2026 у источника одна процедура с тремя режимами (@PrKor):
+
+    «Документы (список)» — документы, которые ещё НЕ загружены к нам (очередь на загрузку):
+                           те же две таблицы, что выше (call_sql);
+    «Документы (запись)» — @ID_GUID = документ: «загружен, уберите из списка» (mark_sql);
+    «Документы (доступ)» — @ID_UserBoss = шестизначный ID пользователя: список ID_GUID,
+                           доступных ему (access_sql, вызывается при запросе пользователя).
+
+Если задан mark_sql, список — это очередь, а не полный снимок. Тогда refresh():
+    1. открывает ОДНО соединение и держит его до конца загрузки;
+    2. вызывает «список», бинарники пишет в хранилище, документы — в source_items (commit);
+    3. по тому же соединению для каждого сохранённого документа вызывает «запись»;
+    4. закрывает соединение.
+«Загружен» = шапка и файл уже у нас (в source_items и хранилище файлов). Дальше документ
+разбирается из нашей копии, источник для этого не нужен. Документ с пустым или слишком
+большим файлом НЕ отмечаем: пусть источник отдаст его снова, когда файл исправят.
+Документ, которого нет в очереди, не считается удалённым (в очереди только незагруженные).
+
+Пример. «Список» вернул 60 документов, у двух пустой BinaryFile → сохраняем 60, вызываем
+«запись» для 58 → в следующий раз «список» вернёт только эти 2 и новые.
+
+Всё, что ещё неизвестно (имена колонок и т. п.), задаётся в настройках источника
+(`sources.config`, см. MssqlConfig). Пароль — только в .env.
 Драйвер — python-tds (MIT, чистый Python, без ODBC-драйвера Microsoft), шифрование
 через pyOpenSSL (Apache-2.0).
 """
@@ -42,6 +63,7 @@ import re
 import shutil
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
@@ -72,10 +94,17 @@ from app.sources.base import (
 log = logging.getLogger(__name__)
 
 PAGE_SIZE = 500
-# Подстановки в тексте вызова: :user — табельный номер (или служебная учётка при синхронизации),
-# :since — «изменено после» (если функция это умеет).
-_PLACEHOLDER = re.compile(r"(?<![:\w]):(user|since)\b")
+# Подстановки в тексте вызова: :user — ID пользователя в источнике (по умолчанию табельный
+# номер; при синхронизации — служебная учётка), :since — «изменено после» (если функция это
+# умеет), :id — ID_GUID документа (отметка «загружен»).
+_PLACEHOLDER = re.compile(r"(?<![:\w]):(user|since|id)\b")
 _SQL_START = re.compile(r"^\s*(EXEC|EXECUTE|SELECT)\b", re.IGNORECASE)
+
+# Процедура источника «Электронный архив ОРД» (от 04.11.2026), см. docstring модуля.
+ORD_PROCEDURE = "[factory].[dbo].[pr_ИИ - Документы (Электронный архив ОРД)]"
+ORD_LIST_SQL = f"EXEC {ORD_PROCEDURE} @PrKor = 'Документы (список)'"
+ORD_MARK_SQL = f"EXEC {ORD_PROCEDURE} @PrKor = 'Документы (запись)', @ID_GUID = :id"
+ORD_ACCESS_SQL = f"EXEC {ORD_PROCEDURE} @PrKor = 'Документы (доступ)', @ID_UserBoss = :user"
 
 DEFAULT_HEADER_MAP = {
     "Номер": "number",
@@ -111,7 +140,10 @@ class MssqlConfig(BaseModel):
     """Настройки адаптера. Хранятся в sources.config, меняются в админке."""
 
     # Вызов функции. Можно использовать :since и :user (см. выше).
-    call_sql: str = Field(default="EXEC dbo.GetDocuments", min_length=5, max_length=2000)
+    call_sql: str = Field(default=ORD_LIST_SQL, min_length=5, max_length=2000)
+    # Отметка «документ загружен» (:id = ID_GUID). Задана — call_sql отдаёт очередь
+    # незагруженных документов, а не полный список (см. docstring модуля).
+    mark_sql: str | None = Field(default=None, max_length=2000)
     # Значение :user при синхронизации (если функции нужен пользователь).
     service_user: str | None = Field(default=None, max_length=100)
     id_column: str = "ID_GUID"
@@ -127,7 +159,8 @@ class MssqlConfig(BaseModel):
     file_name_column: str | None = None
     # Права на документы источника:
     #   all_authenticated — любой вошедший видит все документы источника (допущение, вопрос 32);
-    #   sql — спрашиваем access_sql с :user = табельный номер, ответ — список ID_GUID.
+    #   sql — спрашиваем access_sql с :user = ID пользователя в источнике (ID_UserBoss;
+    #         по умолчанию табельный номер, админ может подменить), ответ — список ID_GUID.
     access_mode: Literal["all_authenticated", "sql"] = "all_authenticated"
     access_sql: str | None = Field(default=None, max_length=2000)
     # Список общих документов (доступны всем вошедшим). Пусто — общих нет.
@@ -142,7 +175,7 @@ class MssqlConfig(BaseModel):
     # fake — встроенный фейковый источник (только разработка, ENABLE_TEST_USERS=true).
     driver: Literal["tds", "fake"] = "tds"
 
-    @field_validator("call_sql", "access_sql", "common_sql")
+    @field_validator("call_sql", "access_sql", "common_sql", "mark_sql")
     @classmethod
     def _one_statement(cls, v: str | None) -> str | None:
         if v is None or not v.strip():
@@ -158,7 +191,14 @@ class MssqlConfig(BaseModel):
     def _access_sql_needed(self) -> MssqlConfig:
         if self.access_mode == "sql" and not self.access_sql:
             raise ValueError("Для режима прав «sql» нужен запрос прав (access_sql)")
+        if self.mark_sql and ":id" not in self.mark_sql:
+            raise ValueError("В отметке «загружен» (mark_sql) нужен :id — ID_GUID документа")
         return self
+
+    @property
+    def queue(self) -> bool:
+        """call_sql отдаёт только незагруженные документы (очередь), а не все."""
+        return bool(self.mark_sql)
 
 
 def parse_config(raw: dict[str, Any] | None) -> MssqlConfig:
@@ -201,14 +241,23 @@ class ResultSet:
     rows: Iterable[tuple[Any, ...]]
 
 
-class SqlRunner(Protocol):
-    """Выполняет один вызов и отдаёт таблицы по очереди. Вызывается в отдельном потоке.
+class SqlConnection(Protocol):
+    """Одно открытое соединение. Методы вызываются в отдельном потоке.
 
-    Строки таблицы читаются лениво: следующую таблицу можно брать, только дочитав текущую
-    (так бинарники не копятся в памяти).
+    execute отдаёт таблицы по очереди, строки читаются лениво: следующую таблицу можно
+    брать, только дочитав текущую (так бинарники не копятся в памяти), а следующий вызов —
+    только дочитав все таблицы предыдущего.
     """
 
     def execute(self, sql: str, params: dict[str, Any]) -> Iterator[ResultSet]: ...
+
+    def close(self) -> None: ...
+
+
+class SqlRunner(Protocol):
+    """Открывает соединение с источником."""
+
+    def connect(self) -> SqlConnection: ...
 
 
 RunnerFactory = Callable[[Source, MssqlConfig, Settings], SqlRunner]
@@ -245,7 +294,7 @@ class TdsRunner:
         if not self.user:
             raise SourceUnavailable(f"Не задан логин SQL Server: {prefix}_USER в .env")
 
-    def execute(self, sql: str, params: dict[str, Any]) -> Iterator[ResultSet]:
+    def connect(self) -> TdsConnection:
         import pytds  # импорт здесь: драйвер нужен только источнику MS SQL
 
         cafile = None
@@ -267,7 +316,8 @@ class TdsRunner:
                 cafile=cafile,
                 validate_host=True,
                 autocommit=True,
-                readonly=True,
+                # «Документы (запись)» меняет данные источника — тогда не только чтение.
+                readonly=not self.config.queue,
                 appname="rag-system",
                 bytes_to_unicode=True,
                 disable_connect_retry=True,
@@ -275,8 +325,16 @@ class TdsRunner:
         except Exception as exc:  # noqa: BLE001 — сеть, TLS, неверный пароль: всё «не отвечает»
             # Текст ошибки драйвера может содержать имя пользователя, но не пароль.
             raise SourceUnavailable(f"SQL Server не отвечает: {type(exc).__name__}: {exc}") from exc
+        return TdsConnection(conn)
+
+
+class TdsConnection:
+    def __init__(self, conn: Any):
+        self._conn = conn
+
+    def execute(self, sql: str, params: dict[str, Any]) -> Iterator[ResultSet]:
+        cur = self._conn.cursor()
         try:
-            cur = conn.cursor()
             try:
                 cur.execute(to_pyformat(sql), {k: v for k, v in params.items() if v is not None})
             except Exception as exc:  # noqa: BLE001
@@ -288,7 +346,26 @@ class TdsRunner:
                 if not cur.nextset():
                     break
         finally:
-            conn.close()
+            cur.close()
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def run_once(runner: SqlRunner, sql: str, params: dict[str, Any]) -> list[ResultSet]:
+    """Короткий вызов на своём соединении (права, общие документы): таблицы целиком."""
+    conn = runner.connect()
+    try:
+        return [ResultSet(rs.columns, list(rs.rows)) for rs in conn.execute(sql, params)]
+    finally:
+        conn.close()
+
+
+def drain(result_sets: Iterator[ResultSet]) -> None:
+    """Дочитывает ответ до конца (вызов без таблиц, например «запись»)."""
+    for rs in result_sets:
+        for _ in rs.rows:
+            pass
 
 
 def _runner(source: Source, config: MssqlConfig, settings: Settings) -> SqlRunner:
@@ -578,7 +655,7 @@ class MssqlSource:
     async def _query_ids(self, sql: str, params: dict[str, Any]) -> set[str]:
         def run() -> set[str]:
             ids: set[str] = set()
-            for rs in self._runner().execute(sql, params):
+            for rs in run_once(self._runner(), sql, params):
                 i = _find(rs.columns, self.config.id_column)
                 for row in rs.rows:
                     value = row[i if i is not None else 0]
@@ -605,12 +682,54 @@ class MssqlSource:
                 tzinfo=None
             )
         reader = SnapshotReader(self.config, self.settings)
+        # Все вызовы одного соединения — в одном потоке: драйвер не любит смену потоков.
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"mssql-{self.code}")
+        loop = asyncio.get_running_loop()
 
-        def run() -> Snapshot:
-            return reader.read(self._runner().execute(self.config.call_sql, params))
+        async def in_thread(fn: Callable[[], Any]) -> Any:
+            return await loop.run_in_executor(pool, fn)
 
-        snap = await asyncio.to_thread(run)
-        return await self._save(snap, full=not partial)
+        try:
+            # Одно соединение на всю загрузку: «список» → сохранение у нас → «запись».
+            conn: SqlConnection = await in_thread(self._runner().connect)
+            try:
+                snap: Snapshot = await in_thread(
+                    lambda: reader.read(conn.execute(self.config.call_sql, params))
+                )
+                # Очередь (mark_sql) — не полный список: отсутствие документа ≠ удаление.
+                stats = await self._save(snap, full=not partial and not self.config.queue)
+                if self.config.queue:
+                    stats |= await self._mark_loaded(snap, conn, in_thread)
+            finally:
+                await in_thread(conn.close)
+        finally:
+            pool.shutdown(wait=False)
+        return stats
+
+    async def _mark_loaded(
+        self,
+        snap: Snapshot,
+        conn: SqlConnection,
+        in_thread: Callable[[Callable[[], Any]], Any],
+    ) -> dict[str, int]:
+        """«Документы (запись)» по каждому сохранённому у нас документу, по тому же соединению.
+
+        Вызывается после commit в source_items: если мы упадём раньше, документ останется
+        в очереди источника и придёт снова (отпечаток тот же — повторной обработки не будет).
+        """
+        assert self.config.mark_sql
+        sql = self.config.mark_sql
+        marked = held = 0
+        for ext_id, doc in snap.docs.items():
+            if any(f.get("error") for f in doc.files):
+                held += 1  # пустой или слишком большой файл — пусть источник отдаст его снова
+                continue
+            await in_thread(lambda i=ext_id: drain(conn.execute(sql, {"id": i})))
+            marked += 1
+        log.info(
+            "Источник %s: отмечено загруженными %s, оставлено в очереди %s", self.code, marked, held
+        )
+        return {"marked": marked, "held": held}
 
     async def _save(self, snap: Snapshot, *, full: bool) -> dict[str, int]:
         now = datetime.now(UTC)
@@ -699,6 +818,7 @@ class MssqlSource:
             minutes = self.config.full_refresh_minutes
             stale = (
                 modified_since is None
+                or self.config.queue  # очередь незагруженных: спрашиваем каждую синхронизацию
                 or ":since" in self.config.call_sql
                 or last is None
                 or (datetime.now(UTC) - last).total_seconds() >= minutes * 60

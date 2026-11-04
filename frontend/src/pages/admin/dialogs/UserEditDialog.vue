@@ -25,6 +25,7 @@ const roleIds = ref<number[]>([])
 const groupIds = ref<number[]>([])
 const active = ref(true)
 const password = ref('')
+const sourceId = ref('')
 const error = ref<string | null>(null)
 const info = ref<string | null>(null)
 const busy = ref(false)
@@ -36,6 +37,7 @@ function fill(u: AdminUserDetail) {
   groupIds.value = u.groups.map((g) => g.id)
   active.value = u.is_active
   password.value = ''
+  sourceId.value = u.source_user_id ?? ''
 }
 
 watch(open, async (v) => {
@@ -80,6 +82,11 @@ async function save() {
     error.value = 'Пароль должен быть не короче 10 символов'
     return
   }
+  const sid = sourceId.value.trim()
+  if (sid && !/^\d{6}$/.test(sid)) {
+    error.value = 'ID пользователя в источнике — шесть цифр, например 784683'
+    return
+  }
   await run(
     () =>
       adminApi.updateUser(u.id, {
@@ -87,6 +94,7 @@ async function save() {
         role_ids: roleIds.value,
         group_ids: groupIds.value,
         is_active: active.value,
+        source_user_id: sid,
         ...(password.value ? { password: password.value } : {}),
       }),
     'Изменения сохранены',
@@ -122,6 +130,22 @@ async function save() {
         <label class="label" for="ue-name">ФИО</label>
         <input id="ue-name" v-model="fullName" class="input" />
         <span v-if="user.account_type === 'external'" class="hint">Обновится из внешнего сервиса при следующем входе</span>
+      </div>
+      <div class="field">
+        <label class="label" for="ue-source-id">ID пользователя в источнике документов (ID_UserBoss)</label>
+        <input
+          id="ue-source-id"
+          v-model="sourceId"
+          class="input mono num"
+          inputmode="numeric"
+          maxlength="6"
+          :placeholder="user.personnel_number"
+          style="max-width: 200px"
+        />
+        <span class="hint">
+          Шесть цифр. По этому ID источник выдаёт список доступных документов. Пусто — используется табельный номер.
+          Временная настройка для отладки прав; после сохранения права обновятся сразу.
+        </span>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <CheckList v-model="roleIds" label="Роли (кроме «Пользователь» — она есть у всех)" :items="roleItems" />

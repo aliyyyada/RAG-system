@@ -9,6 +9,7 @@
 больше никто не попадёт.
 """
 
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
@@ -19,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.access.service import reset_cache
 from app.auth import permissions as perms
 from app.auth.deps import SessionDep, client_ip, require_permission
 from app.auth.passwords import hash_password, validate_new_password
@@ -108,6 +110,8 @@ class UserOut(BaseModel):
     account_type: str
     is_emergency: bool
     is_active: bool
+    # ID в источнике документов (ID_UserBoss); None — используется табельный номер.
+    source_user_id: str | None
     status: UserStatus
     failed_attempts: int
     locked_until: datetime | None
@@ -166,6 +170,19 @@ class UserUpdate(BaseModel):
     role_ids: list[int] | None = None
     group_ids: list[int] | None = None
     password: SecretStr | None = None  # только локальные учётки
+    # ID пользователя в источнике (ID_UserBoss): шесть цифр; "" — вернуть табельный номер.
+    # Временная настройка для отладки прав на документы.
+    source_user_id: str | None = None
+
+    @field_validator("source_user_id")
+    @classmethod
+    def _six_digits(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if v and not re.fullmatch(r"\d{6}", v):
+            raise ValueError("ID пользователя в источнике — шесть цифр, например 784683")
+        return v
 
 
 class GroupOut(BaseModel):
@@ -467,6 +484,7 @@ def _user_out(user: User, lock: LoginLockout | None) -> UserOut:
         account_type=user.account_type,
         is_emergency=user.is_emergency,
         is_active=user.is_active,
+        source_user_id=user.source_user_id,
         status=_status(user, lock, now),
         failed_attempts=lock.failed_count if lock is not None else 0,
         locked_until=lock.locked_until if locked and lock is not None else None,
@@ -697,6 +715,11 @@ async def update_user(
         details["is_active"] = body.is_active
         if not body.is_active:
             await revoke_user_sessions(session, user.id)
+    if body.source_user_id is not None and (body.source_user_id or None) != user.source_user_id:
+        user.source_user_id = body.source_user_id or None
+        details["source_user_id"] = user.source_user_id
+        # Новый ID — новые права: старый ответ источника из кэша больше не годится.
+        await reset_cache(session, user.id)
     if body.password is not None:
         if user.account_type == "external":
             raise _err(

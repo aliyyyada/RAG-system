@@ -19,6 +19,11 @@
 `dbo.GetUserDocuments`, фейк отвечает по таблице ACCESS. Тесты меняют состояние через
 FAKE_MSSQL: change() — документ изменился, remove() — пропал из ответа функции,
 unavailable — сервер «лёг», calls — сколько раз вызывали функцию.
+
+Процедура «Электронный архив ОРД» (04.11.2026) тоже есть: @PrKor = 'Документы (список)'
+отдаёт только НЕ отмеченные документы, 'Документы (запись)' с @ID_GUID отмечает документ
+загруженным (marked), 'Документы (доступ)' с @ID_UserBoss отвечает по таблице ACCESS.
+connections — сколько соединений открыли, calls — (номер соединения, вызов, параметры).
 """
 
 import copy
@@ -130,6 +135,9 @@ ACCESS: dict[str, set[str] | str] = {
     "T-0002": "*",
     "T-0003": set(),
     "T-0004": "*",
+    # Шестизначные ID_UserBoss для процедуры «Документы (доступ)».
+    "784683": {G_537, G_151},
+    "779203": "*",
 }
 
 
@@ -143,6 +151,10 @@ class FakeMssql:
             self.meta, self.files = _seed()
             self.unavailable = False
             self.calls: list[tuple[str, dict[str, Any]]] = []
+            self.connection_of_call: list[int] = []
+            self.connections = 0
+            self.open_connections = 0
+            self.marked: set[str] = set()
             self.access: dict[str, set[str] | str] = copy.deepcopy(ACCESS)
 
     # -- изменения из тестов ------------------------------------------------------
@@ -162,15 +174,39 @@ class FakeMssql:
 
     # -- SqlRunner -------------------------------------------------------------------
 
-    def execute(self, sql: str, params: dict[str, Any]) -> Iterator[ResultSet]:
+    def connect(self) -> "FakeConnection":
+        with self._lock:
+            if self.unavailable:
+                from app.sources.base import SourceUnavailable
+
+                raise SourceUnavailable("SQL Server не отвечает: TimeoutError")
+            self.connections += 1
+            self.open_connections += 1
+            return FakeConnection(self, self.connections)
+
+    def execute(self, sql: str, params: dict[str, Any], conn_no: int = 0) -> Iterator[ResultSet]:
         with self._lock:
             self.calls.append((sql, dict(params)))
+            self.connection_of_call.append(conn_no)
             if self.unavailable:
                 from app.sources.base import SourceUnavailable
 
                 raise SourceUnavailable("SQL Server не отвечает: TimeoutError")
             meta = copy.deepcopy(self.meta)
             files = list(self.files)
+        mode = re.search(r"@PrKor\s*=\s*'([^']*)'", sql)
+        if mode and mode.group(1) == "Документы (запись)":
+            with self._lock:
+                self.marked.add(str(params["id"]).upper())
+            return
+        if mode and mode.group(1) == "Документы (доступ)":
+            allowed = self.access.get(str(params.get("user")), set())
+            ids = [r["ID_GUID"] for r in meta] if allowed == "*" else sorted(allowed)
+            yield ResultSet(["ID_GUID"], [(i,) for i in ids])
+            return
+        if mode and mode.group(1) == "Документы (список)":
+            meta = [r for r in meta if r["ID_GUID"] not in self.marked]
+            files = [f for f in files if f["ID_GUID"] not in self.marked]
         if re.search(r"GetUserDocuments", sql, re.IGNORECASE):
             allowed = self.access.get(str(params.get("user")), set())
             ids = [r["ID_GUID"] for r in meta] if allowed == "*" else sorted(allowed)
@@ -184,7 +220,24 @@ class FakeMssql:
 
     @property
     def main_calls(self) -> int:
-        return sum(1 for sql, _ in self.calls if "GetDocuments" in sql)
+        return sum(1 for sql, _ in self.calls if "GetDocuments" in sql or "(список)" in sql)
+
+
+class FakeConnection:
+    def __init__(self, fake: FakeMssql, number: int) -> None:
+        self.fake = fake
+        self.number = number
+        self.closed = False
+
+    def execute(self, sql: str, params: dict[str, Any]) -> Iterator[ResultSet]:
+        assert not self.closed, "вызов по закрытому соединению"
+        return self.fake.execute(sql, params, self.number)
+
+    def close(self) -> None:
+        if not self.closed:
+            self.closed = True
+            with self.fake._lock:
+                self.fake.open_connections -= 1
 
 
 FAKE_MSSQL = FakeMssql()

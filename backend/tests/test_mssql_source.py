@@ -19,6 +19,9 @@ from app.models import Chunk, Document, DocumentFile, Source, SourceItem, SyncRu
 from app.sources import open_source
 from app.sources.base import BadSourceData
 from app.sources.mssql import (
+    ORD_ACCESS_SQL,
+    ORD_LIST_SQL,
+    ORD_MARK_SQL,
     MssqlConfig,
     ResultSet,
     SnapshotReader,
@@ -293,7 +296,7 @@ def test_real_driver_reports_unreachable_server(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("SOURCE_MSSQL_PASSWORD", "very-secret-pass")
     runner = TdsRunner(src, cfg, get_settings())
     with pytest.raises(SourceUnavailable, match="не отвечает") as err:
-        list(runner.execute("EXEC dbo.GetDocuments", {}))
+        runner.connect()
     assert "very-secret-pass" not in str(err.value)
 
     # Шифрование включено, а сертификата CA нет — понятная ошибка до подключения.
@@ -301,7 +304,7 @@ def test_real_driver_reports_unreachable_server(monkeypatch: pytest.MonkeyPatch)
         update={"source_ca_file": None, "external_auth_ca_file": None}
     )
     with pytest.raises(SourceUnavailable, match="SOURCE_CA_FILE"):
-        list(TdsRunner(src, MssqlConfig(), settings).execute("EXEC dbo.GetDocuments", {}))
+        TdsRunner(src, MssqlConfig(), settings).connect()
 
 
 @pytest.mark.db
@@ -325,3 +328,137 @@ async def test_document_card_hides_technical_columns_and_guest_sees_nothing(
     assert r.status_code == 403 and r.json()["detail"]["code"] == "login_required"
     r = await client.get("/api/documents")
     assert r.json()["total"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Процедура «Электронный архив ОРД» (04.11.2026): список-очередь, запись, доступ
+# ---------------------------------------------------------------------------
+
+
+async def _use_ord_procedure(source_id: int, **extra: object) -> None:
+    async with get_sessionmaker()() as s, s.begin():
+        row = await s.get(Source, source_id)
+        assert row is not None
+        row.config = {"call_sql": ORD_LIST_SQL, "mark_sql": ORD_MARK_SQL, **extra}
+
+
+def test_ord_procedure_config() -> None:
+    cfg = parse_config(
+        {"mark_sql": ORD_MARK_SQL, "access_mode": "sql", "access_sql": ORD_ACCESS_SQL}
+    )
+    assert cfg.call_sql == ORD_LIST_SQL and cfg.queue
+    assert to_pyformat(ORD_MARK_SQL).endswith("@ID_GUID = %(id)s")
+    assert to_pyformat(ORD_ACCESS_SQL).endswith("@ID_UserBoss = %(user)s")
+    assert not parse_config({}).queue
+    with pytest.raises(BadSourceData, match=":id"):
+        parse_config({"mark_sql": "EXEC dbo.Mark"})
+
+
+@pytest.mark.db
+async def test_queue_marks_each_loaded_document_on_the_same_connection(
+    mssql_source: int, fake_mssql: FakeMssql
+) -> None:
+    await _use_ord_procedure(mssql_source)
+    sm, settings = get_sessionmaker(), get_settings()
+    stats = await sync.run_incremental(mssql_source, settings, sm)
+    await drain()
+    assert stats["new"] == 6
+
+    # Одно соединение на всю загрузку: «список», затем «запись» по каждому документу.
+    assert fake_mssql.connections == 1 and fake_mssql.open_connections == 0
+    assert set(fake_mssql.connection_of_call) == {1}
+    kinds = [("(список)" in sql, "(запись)" in sql) for sql, _ in fake_mssql.calls]
+    assert kinds[0] == (True, False) and all(m for _, m in kinds[1:])
+    # Пустой файл (655к) не отмечаем: пусть источник отдаст его снова.
+    assert fake_mssql.marked == {fm.G_537, fm.G_151, fm.G_149, fm.G_159, fm.G_162}
+    assert {p["id"] for _, p in fake_mssql.calls[1:]} == fake_mssql.marked
+
+    # Следующая синхронизация: в очереди только 655к. Остальные НЕ считаются удалёнными.
+    await sync.run_incremental(mssql_source, settings, sm)
+    await drain()
+    assert fake_mssql.connections == 2
+    list_calls = [sql for sql, _ in fake_mssql.calls if "(список)" in sql]
+    assert len(list_calls) == 2
+    docs = await _docs()
+    assert all(d.deleted_at is None for d in docs.values())
+    assert {k for k, d in docs.items() if d.status == "ready"} == {
+        fm.G_537,
+        fm.G_151,
+        fm.G_149,
+        fm.G_159,
+        fm.G_162,
+    }
+
+    # Ночная сверка в режиме очереди тоже ничего не удаляет.
+    await sync.run_reconcile(mssql_source, settings, sm)
+    await drain()
+    assert all(d.deleted_at is None for d in (await _docs()).values())
+
+
+@pytest.mark.db
+async def test_queue_mark_failure_keeps_saved_documents(
+    mssql_source: int, fake_mssql: FakeMssql, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Источник «лёг» посреди отметок: сохранённое остаётся у нас, соединение закрыто."""
+    from app.sources.base import SourceUnavailable
+
+    await _use_ord_procedure(mssql_source)
+    original = fake_mssql.execute
+
+    def flaky(sql: str, params: dict, conn_no: int = 0):  # type: ignore[no-untyped-def]
+        if "(запись)" in sql and len(fake_mssql.marked) >= 2:
+            raise SourceUnavailable("SQL Server не отвечает: обрыв")
+        return original(sql, params, conn_no)
+
+    monkeypatch.setattr(fake_mssql, "execute", flaky)
+    adapter = open_source(await _source(mssql_source), get_settings())
+    with pytest.raises(SourceUnavailable):
+        await adapter.refresh(None)  # type: ignore[attr-defined]
+    assert fake_mssql.open_connections == 0 and len(fake_mssql.marked) == 2
+    async with get_sessionmaker()() as s:
+        saved = set(await s.scalars(select(SourceItem.external_id)))
+    assert len(saved) == 6  # неотмеченные придут снова и совпадут по отпечатку
+
+
+@pytest.mark.db
+async def test_access_procedure_uses_six_digit_id_set_by_admin(
+    client, mssql_source: int, fake_mssql: FakeMssql
+) -> None:  # type: ignore[no-untyped-def]
+    from tests.helpers import auth, login_ok, seed_test_users
+
+    await seed_test_users()
+    await _use_ord_procedure(mssql_source, access_mode="sql", access_sql=ORD_ACCESS_SQL)
+    await sync.run_incremental(mssql_source, get_settings(), get_sessionmaker())
+    await drain()
+
+    async def visible(token: str) -> set[str]:
+        r = await client.get("/api/documents", headers=auth(token))
+        assert r.status_code == 200, r.text
+        docs = await _docs()
+        by_id = {d.id: k for k, d in docs.items()}
+        return {by_id[i["id"]] for i in r.json()["items"]}
+
+    user = await login_ok(client, "T-0003")  # по табельному номеру источник ничего не даёт
+    assert await visible(user) == set()
+    assert fake_mssql.calls[-1][1] == {"user": "T-0003"}
+
+    admin = auth(await login_ok(client, "T-0004"))
+    users = (await client.get("/api/admin/users?q=T-0003", headers=admin)).json()["items"]
+    uid = users[0]["id"]
+    bad = await client.patch(
+        f"/api/admin/users/{uid}", json={"source_user_id": "12345"}, headers=admin
+    )
+    assert bad.status_code == 422
+
+    r = await client.patch(
+        f"/api/admin/users/{uid}", json={"source_user_id": "784683"}, headers=admin
+    )
+    assert r.status_code == 200 and r.json()["source_user_id"] == "784683"
+    # Кэш прав сброшен: сразу видны документы ID 784683, а не старый пустой ответ.
+    assert await visible(user) == {fm.G_537, fm.G_151}
+    assert fake_mssql.calls[-1][1] == {"user": "784683"}
+    assert "(доступ)" in fake_mssql.calls[-1][0]
+
+    r = await client.patch(f"/api/admin/users/{uid}", json={"source_user_id": ""}, headers=admin)
+    assert r.json()["source_user_id"] is None
+    assert await visible(user) == set()

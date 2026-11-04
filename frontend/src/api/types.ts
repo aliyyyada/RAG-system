@@ -56,6 +56,8 @@ export interface AdminUser {
   account_type: AccountType
   is_emergency: boolean
   is_active: boolean
+  // ID в источнике документов (ID_UserBoss); null — используется табельный номер.
+  source_user_id: string | null
   status: UserStatus
   failed_attempts: number
   locked_until: string | null
@@ -174,6 +176,7 @@ export interface MssqlConfig {
   access_mode: 'all_authenticated' | 'sql'
   access_sql: string | null
   common_sql: string | null
+  mark_sql: string | null
   encrypt: boolean
   [key: string]: unknown
 }

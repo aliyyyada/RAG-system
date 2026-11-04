@@ -141,9 +141,11 @@ const groups = computed(() => {
 const lastTurn = computed(() => chat.turns[chat.turns.length - 1] ?? null)
 const unavailable = computed(() => lastTurn.value?.unavailable ?? [])
 
+// Источники показываем только у готового ответа: пока система ищет и пишет ответ,
+// панель пустая (просьба заказчика от 04.11.2026 — пользователь видит конечный результат).
 const shownSources = computed(() => {
   const t = chat.activeTurn
-  if (!t || t.noAnswer) return []
+  if (!t || t.noAnswer || pending(t)) return []
   const cited = t.sources.filter((s) => s.cited)
   return showAll.value || !cited.length ? t.sources : cited
 })
@@ -188,7 +190,24 @@ function stageText(t: Turn) {
   if (t.stage === 'queue') return `Ожидание модели: вы ${(t.position ?? 0) + 1}-й в очереди`
   return 'Пишу ответ'
 }
-const pending = (t: Turn) => ['search', 'rerank', 'queue', 'generate'].includes(t.stage)
+function pending(t: Turn) {
+  return ['search', 'rerank', 'queue', 'generate'].includes(t.stage)
+}
+
+// Фильтры поиска и режим видит только администратор; остальные ищут по всем своим
+// документам в режиме по умолчанию (просьба заказчика от 04.11.2026).
+const isAdmin = computed(() => !auth.isGuest && !!auth.me?.is_admin)
+watch(
+  isAdmin,
+  (admin) => {
+    if (!admin) {
+      chat.filters = {}
+      period.value = ''
+      chat.mode = 'mixed'
+    }
+  },
+  { immediate: true },
+)
 
 const filtersOn = computed(() => {
   const f = chat.filters
@@ -233,7 +252,7 @@ function resetFilters() {
     </aside>
 
     <section class="chat-main">
-      <div class="chat-filters" role="group" aria-label="Фильтры поиска">
+      <div v-if="isAdmin" class="chat-filters" role="group" aria-label="Фильтры поиска" data-testid="search-filters">
         <label class="flt">
           Источник
           <select v-model="chat.filters.source" class="select select-sm">
@@ -314,7 +333,7 @@ function resetFilters() {
           <div class="a" :class="{ 'a-active': t.key === chat.activeTurn?.key && chat.turns.length > 1 }" @click="chat.activeKey = t.key">
             <div class="a-h">
               <span class="a-mark">AI</span>
-              <template v-if="pending(t) && !t.answer">Готовлю ответ</template>
+              <template v-if="pending(t)">Готовлю ответ</template>
               <template v-else-if="t.noAnswer">Ответ не найден</template>
               <template v-else-if="t.stage === 'error' && !t.answer">Ошибка</template>
               <template v-else-if="t.sources.length">Ответ по {{ docsCount(t) }} {{ plural(docsCount(t), 'документу', 'документам', 'документам') }}</template>
@@ -337,7 +356,7 @@ function resetFilters() {
             <div v-else-if="t.answer" class="a-body">
               <AnswerText
                 :text="t.answer"
-                :sources="t.sources.length"
+                :sources="pending(t) ? 0 : t.sources.length"
                 :streaming="t.stage === 'generate'"
                 @cite="(n) => onCite(t, n)"
                 @hover="(n) => (chat.activeCite = n)"
@@ -389,7 +408,7 @@ function resetFilters() {
           Показать все найденные ({{ chat.activeTurn?.sources.length }})
         </button>
         <p v-if="!shownSources.length" class="small muted src-empty">
-          <template v-if="chat.activeTurn && pending(chat.activeTurn)">Ищу подходящие фрагменты…</template>
+          <template v-if="chat.activeTurn && pending(chat.activeTurn)">Источники появятся, когда ответ будет готов.</template>
           <template v-else-if="chat.activeTurn?.noAnswer">В доступных вам документах подходящих фрагментов нет.</template>
           <template v-else>Здесь появятся документы, на которые опирается ответ.</template>
         </p>

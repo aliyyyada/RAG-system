@@ -212,7 +212,10 @@ const isFiltered = computed(() => !!(q.value.trim() || groupFilter.value || type
               <td colspan="9"><div class="skel" style="width: 60%"></div></td>
             </tr>
             <tr v-for="u in data?.items ?? []" :key="u.id">
-              <td class="num mono" style="white-space: nowrap">{{ u.personnel_number }}</td>
+              <td class="num mono" style="white-space: nowrap">
+                {{ u.personnel_number }}
+                <div v-if="u.source_user_id" class="small muted" title="ID в источнике документов задан администратором">ID {{ u.source_user_id }}</div>
+              </td>
               <td><b>{{ u.full_name || '—' }}</b></td>
               <td>{{ u.department || '—' }}</td>
               <td>{{ u.groups.map((g) => g.name).join(', ') || '—' }}</td>

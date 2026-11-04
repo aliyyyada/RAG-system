@@ -41,8 +41,16 @@ test('связи документа видны с учётом прав', async 
   await expect(user.locator('.chunk-view.hl')).toContainText('признать утратившим силу')
 })
 
-test('режим поиска переключается и запоминается', async ({ page }) => {
+test('обычный пользователь не видит фильтры и режим поиска', async ({ page }) => {
   await loginAs(page, 'T-0002')
+  await page.goto('/')
+  await expect(page.getByRole('textbox', { name: 'Вопрос', exact: true })).toBeVisible()
+  await expect(page.getByTestId('search-filters')).toHaveCount(0)
+  await expect(page.getByTestId('search-mode')).toHaveCount(0)
+})
+
+test('режим поиска (у администратора) переключается и запоминается', async ({ page }) => {
+  await loginAs(page, 'T-0004')
   await page.goto('/')
   const mode = page.getByTestId('search-mode')
   await expect(mode).toHaveValue('mixed')

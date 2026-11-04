@@ -164,10 +164,20 @@ class User(Base):
     is_emergency: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # false — заблокирован администратором (в отличие от временной блокировки за пароль).
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # ID пользователя в источнике документов (ID_UserBoss, шесть цифр). Пусто — табельный
+    # номер. Меняет администратор (временно, для отладки прав: «войти глазами» другого
+    # сотрудника). Источник выдаёт права по этому ID.
+    source_user_id: Mapped[str | None] = mapped_column(String(16))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     roles: Mapped[list["Role"]] = relationship(secondary=user_roles, lazy="selectin")
+
+    @property
+    def source_login(self) -> str:
+        """Кем человек представляется источнику документов при запросе прав."""
+        return self.source_user_id or self.personnel_number
+
     # Без back_populates: группы и участники меняются в разных запросах, а двусторонняя
     # синхронизация коллекций в async-сессии тянет ленивые загрузки.
     groups: Mapped[list["Group"]] = relationship(secondary=group_members, lazy="selectin")
