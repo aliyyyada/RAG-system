@@ -90,14 +90,19 @@ def _set_refresh_cookie(response: Response, settings: Settings, token: str, expi
         expires=expires,
         path=REFRESH_COOKIE_PATH,
         httponly=True,
-        secure=True,  # HTTPS везде, включая разработку
+        # HTTPS везде, включая разработку; без Secure — только в режиме PLAIN_HTTP=true.
+        secure=not settings.plain_http,
         samesite="strict",
     )
 
 
-def _clear_refresh_cookie(response: Response) -> None:
+def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
-        REFRESH_COOKIE, path=REFRESH_COOKIE_PATH, httponly=True, secure=True, samesite="strict"
+        REFRESH_COOKIE,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=not settings.plain_http,
+        samesite="strict",
     )
 
 
@@ -162,7 +167,7 @@ async def refresh(
         issued = await service.refresh(session, settings, refresh_token)
     except service.RefreshError:
         response = _error(service.LoginError("session_closed", "Сессия завершена, войдите снова"))
-        _clear_refresh_cookie(response)
+        _clear_refresh_cookie(response, settings)
         return response
     return await _token_response(session, settings, issued)
 
@@ -189,7 +194,7 @@ async def logout(
                     service.ClientInfo(client_ip(request), request.headers.get("user-agent")),
                 )
         await session.commit()
-    _clear_refresh_cookie(response)
+    _clear_refresh_cookie(response, settings)
 
 
 @router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
@@ -204,7 +209,7 @@ async def logout_all(
     await service.revoke_user_sessions(session, principal.user.id)
     await delete_user_runs(session, settings, principal.user.id)
     await session.commit()
-    _clear_refresh_cookie(response)
+    _clear_refresh_cookie(response, settings)
 
 
 @router.get("/me", response_model=MeOut)

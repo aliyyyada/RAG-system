@@ -44,9 +44,14 @@ else { $envText = $envText.TrimEnd() + "`r`nAPP_VERSION=$version`r`n" }
 Set-Content -Path .env -Value $envText -NoNewline -Encoding ascii
 
 Step "3/9 Сертификат"
-if (-not ((Test-Path certs\server.crt) -and (Test-Path certs\server.key))) {
-  Fail "Нет certs\server.crt и certs\server.key. Положите сертификат от администраторов (см. certs\README.md)."
+# PLAIN_HTTP=true в .env — сайт по обычному http, сертификат не нужен.
+$plainHttp = $envText -match "(?mi)^PLAIN_HTTP=(true|1|yes)\s*$"
+if ($plainHttp) {
+  Write-Host "PLAIN_HTTP=true: сайт будет работать по http без сертификата." -ForegroundColor Yellow
+} elseif (-not ((Test-Path certs\server.crt) -and (Test-Path certs\server.key))) {
+  Fail "Нет certs\server.crt и certs\server.key. Положите сертификат от администраторов (см. certs\README.md) или впишите в .env PLAIN_HTTP=true."
 }
+$scheme = if ($plainHttp) { "http" } else { "https" }
 
 Step "4/9 Проверка целостности файлов пакета"
 foreach ($line in Get-Content SHA256SUMS) {
@@ -86,10 +91,10 @@ if ($LASTEXITCODE -ne 0) { Fail "docker compose up завершился с ош�
 Write-Host "Ожидание готовности (до 5 минут)..."
 for ($i = 0; $i -lt 60; $i++) {
   # curl.exe встроен в Windows 10/11 и Server 2019+; -k: сертификат может быть от внутреннего CA
-  $body = & curl.exe -sk --max-time 3 https://localhost/api/health/ready
+  $body = & curl.exe -sk --max-time 3 "${scheme}://localhost/api/health/ready"
   if ($LASTEXITCODE -eq 0 -and $body -match '"status":"ready"') {
     Write-Host $body
-    Write-Host "`nСистема запущена. Откройте в браузере https://<имя-сервера>/" -ForegroundColor Green
+    Write-Host "`nСистема запущена. Откройте в браузере ${scheme}://<имя-сервера>/" -ForegroundColor Green
     Write-Host "Первый запуск? Назначьте администратора (см. docs/install-offline.md, часть 4):" -ForegroundColor Yellow
     Write-Host "  docker compose exec app python -m app.cli create-admin <табельный номер>" -ForegroundColor Yellow
     exit 0

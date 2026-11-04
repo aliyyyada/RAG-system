@@ -164,6 +164,16 @@ jobs:
           curl -skf https://localhost/api/auth/me | grep -q '"permissions":\[\]'
           curl -skf https://localhost/api/auth/me | grep -q '"guest_mode_enabled":false'
           test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/admin/users)" = "401"
+      - name: Smoke-тест — режим без сертификата (PLAIN_HTTP=true)
+        run: |
+          PLAIN_HTTP=true docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d proxy
+          for i in $(seq 1 30); do
+            curl -sf http://localhost/api/health/ready && break
+            sleep 2
+          done
+          curl -sf http://localhost/api/health/ready
+          curl -sf http://localhost/login | grep -q "Поиск по документам"
+          curl -sN --max-time 10 "http://localhost/api/diag/sse?seconds=5" | grep -q "event: done"
       - name: Логи при ошибке
         if: failure()
         run: docker compose logs
