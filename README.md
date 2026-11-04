@@ -45,6 +45,8 @@ docker compose exec app python -m app.cli seed-fake-source   # HTTP-источн
 - https://localhost/api/docs — документация API;
 - `curl -k -N "https://localhost/api/diag/sse?seconds=20"` — поток с heartbeat: каждые 2 с приходит `: ping`, соединение не рвётся.
 
+> **Без сертификата:** строка `PLAIN_HTTP=true` в `.env` включает обычный http (адрес `http://localhost/`, nginx берёт `proxy/nginx-http.conf`, cookie сессии без флага Secure). Вход через фейковый внешний сервис в этом режиме тоже требует `certs/server.crt`, а тестовые учётки T-0001… работают и без него.
+
 > Если `certs/server.crt` создан до этапа 1, удалите оба файла в `certs/` и запустите `dev-cert` ещё раз: в сертификат добавлено имя `fake-service`.
 
 ## Учётки для разработки

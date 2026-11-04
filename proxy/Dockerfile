@@ -15,7 +15,10 @@ RUN npm run build
 FROM nginx:1.28-alpine
 
 RUN rm /etc/nginx/conf.d/default.conf
-COPY proxy/nginx.conf /etc/nginx/conf.d/rag.conf
+# Обе настройки в образе, нужную при старте выбирает choose-config.sh по PLAIN_HTTP из .env.
+COPY proxy/nginx.conf /etc/nginx/rag-https.conf
+COPY proxy/nginx-http.conf /etc/nginx/rag-http.conf
+COPY --chmod=755 proxy/choose-config.sh /docker-entrypoint.d/05-rag-choose-config.sh
 COPY --from=build /src/frontend/dist/ /usr/share/nginx/html/
 
 EXPOSE 80 443

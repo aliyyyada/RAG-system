@@ -40,6 +40,20 @@ async def test_local_test_user_login_sets_secure_refresh_cookie(client: httpx.As
     assert me.json()["user"]["full_name"] == "Тест: обычный пользователь"
 
 
+async def test_plain_http_mode_sets_cookie_without_secure(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PLAIN_HTTP=true: сайт без сертификата, cookie без Secure (иначе браузер её не сохранит)."""
+    monkeypatch.setattr(get_settings(), "plain_http", True)
+    await seed_test_users()
+    r = await login(client, "T-0001", TEST_PASSWORD)
+    assert r.status_code == 200, r.text
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie
+    assert "secure" not in cookie.replace("samesite", "")
+    assert "secure" not in (await client.post("/api/auth/logout")).headers["set-cookie"].lower()
+
+
 async def test_external_user_created_on_first_login_without_password(
     client: httpx.AsyncClient, engine: AsyncEngine
 ) -> None:
