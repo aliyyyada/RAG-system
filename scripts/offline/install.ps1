@@ -65,6 +65,11 @@ Write-Host "Файлы целы."
 Step "5/9 Загрузка Docker-образов (несколько минут)"
 docker load -i images.tar
 if ($LASTEXITCODE -ne 0) { Fail "Не удалось загрузить образы." }
+# Пакет, собранный на Mac с Apple Silicon без linux/amd64, здесь не запустится.
+foreach ($img in Get-Content images.txt | Where-Object { $_.Trim() }) {
+  $arch = docker image inspect --format "{{.Architecture}}" $img.Trim()
+  if ($arch -ne "amd64") { Fail "Образ $img собран под '$arch', а нужен amd64. Пересоберите пакет (docs/build-on-mac.md)." }
+}
 
 Step "6/9 Проверка видеокарты в Docker"
 docker run --rm --gpus all --entrypoint nvidia-smi $ollamaImage
