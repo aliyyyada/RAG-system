@@ -24,7 +24,9 @@
    включить **Use Rosetta for x86_64/amd64 emulation on Apple Silicon** → Apply & restart.
    Без Rosetta сборка тоже пройдёт (через эмулятор QEMU), но в несколько раз медленнее.
 4. **Ресурсы Docker:** Settings → Resources:
-   - Memory — не меньше 8 ГБ;
+   - Memory — не меньше 12 ГБ, Swap — 4 ГБ: при сжатии реранкера в int8 вся модель
+     держится в памяти (≈ 9–10 ГБ). Если памяти мало, Docker молча завершает контейнер
+     и скрипт останавливается без сообщения;
    - Disk usage limit — не меньше 100 ГБ (образы + кэш сборки + копия моделей).
 
    На самом диске Mac должно быть свободно ещё ≈ 20 ГБ под папку `offline-bundle`.
@@ -220,6 +222,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\offline\install.ps1
 | Сборка очень медленная, `npm ci` или `pip install` идут десятки минут | Mac | включить Rosetta (часть 1, шаг 3) |
 | `no space left on device` | Mac | Docker Desktop → Settings → Resources → увеличить диск; `docker builder prune` |
 | Ошибка на реранкере (`pip install torch`) | Mac | запустить скрипт ещё раз: часто это обрыв скачивания |
+| Скрипт молча остановился после `Please consider to run pre-processing before quantization` | Mac | не хватило памяти Docker (код выхода 137): увеличить Memory до 12 ГБ+ (часть 1, шаг 4) и запустить скрипт снова |
 | `File too large` при копировании на флешку | Mac | флешка в FAT32, переформатировать в exFAT (6.1) |
 | «Файл … повреждён при переносе» | Windows | скопировать этот файл с флешки ещё раз; если не помогло, заново записать на флешку |
 | «Образ … собран под 'arm64'» | Windows | пакет собран старым скриптом без amd64, пересобрать на Mac с этой версией скрипта |
