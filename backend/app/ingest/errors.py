@@ -19,7 +19,18 @@ class IngestError(Exception):
         self.stage = stage
         self.message = message
 
+    def __reduce__(self):  # type: ignore[no-untyped-def]
+        # Разбор файла идёт в отдельном процессе (parse_pool), ошибка возвращается оттуда
+        # через pickle. Без этого pickle вызвал бы IngestError(message) и потерял этап.
+        return _rebuild, (type(self), self.stage, self.message)
+
 
 class ParseError(IngestError):
     def __init__(self, message: str, stage: Stage = "parse"):
         super().__init__(stage, message)
+
+
+def _rebuild(cls: type[IngestError], stage: Stage, message: str) -> IngestError:
+    err = cls.__new__(cls)
+    IngestError.__init__(err, stage, message)
+    return err

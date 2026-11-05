@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     ocr_dpi: int = Field(default=300, ge=100, le=600)
     ocr_min_chars: int = Field(default=30, ge=0)
     ocr_timeout_seconds: int = Field(default=180, ge=10)
+    # Разбор файлов (PDF, DOCX, OCR сканов) идёт в отдельных процессах worker'а: столько
+    # процессов одновременно (0 — в самом worker'е, как раньше; так работают тесты).
+    # Каждый процесс после parse_tasks_per_process файлов заменяется новым и возвращает
+    # системе всю память, которую набрал на больших сканах (app/ingest/parse_pool.py).
+    parse_processes: int = Field(default=1, ge=0, le=16)
+    parse_tasks_per_process: int = Field(default=20, ge=1, le=10_000)
     # Размер фрагмента: целимся в chunk_target_chars, не больше chunk_max_chars
     # (~ 400 и ~ 650 токенов bge-m3). Таблицы режем только по строкам.
     chunk_target_chars: int = Field(default=1500, ge=200)
@@ -148,7 +154,7 @@ class Settings(BaseSettings):
     # Запись очереди к LLM без heartbeat дольше этого срока считается брошенной.
     llm_queue_stale_seconds: int = Field(default=30, ge=5)
     # Векторизация в worker: по сколько фрагментов за один запрос к Ollama.
-    embed_batch_size: int = Field(default=16, ge=1, le=256)
+    embed_batch_size: int = Field(default=32, ge=1, le=256)
     # Гостевой режим: не больше N вопросов в минуту с одного IP.
     guest_questions_per_minute: int = Field(default=6, ge=1, le=600)
     # Вопрос пользователя — не длиннее (символов).
@@ -193,6 +199,11 @@ class Settings(BaseSettings):
     check_max_file_mb: int = Field(default=100, ge=1)
 
     worker_poll_seconds: float = 2.0
+    # Worker ведёт две «полосы» задач: разбор документов (процессор) и всё, что идёт
+    # в Ollama (видеокарта: векторизация, граф, противоречия, ЕПоЗ). Пока один документ
+    # разбирается, фрагменты предыдущего уже векторизуются. false — одна общая очередь,
+    # задачи строго по одной, как раньше.
+    worker_split_lanes: bool = True
     # Задача, которая «висит» в статусе running дольше этого срока (например, worker
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.
     worker_stale_after_seconds: int = 15 * 60

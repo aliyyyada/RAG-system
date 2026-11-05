@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.ingest.chunker import chunk_blocks
-from app.ingest.files import MIME, parse_file
+from app.ingest.files import MIME
+from app.ingest.parse_pool import parse_file_async
 from app.models import Chunk, Collection, Document, DocumentFile
 from epoz.checks.textutil import md_tables, norm_ws
 from epoz.models import CheckFile, CheckRun
@@ -110,7 +111,7 @@ async def ingest_file(
     """Разбирает файл пакета (PDF, DOCX, DOC, скан через OCR) в документ проверки."""
     path = Path(cf.path)
     try:
-        kind, parsed = await asyncio.to_thread(parse_file, path, cf.name, settings)
+        kind, parsed = await parse_file_async(path, cf.name, settings)
     except Exception as exc:  # noqa: BLE001 — файл битый: проверка продолжится без него
         cf.parse_status = "error"
         cf.parse_error = (getattr(exc, "message", None) or f"{type(exc).__name__}: {exc}")[:500]

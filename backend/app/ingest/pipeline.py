@@ -19,7 +19,6 @@
 и ждёт кнопки «Повторить» в отчёте.
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,7 +34,8 @@ from app.ingest.assemble import assemble_header, header_meta
 from app.ingest.blocks import Block
 from app.ingest.chunker import ChunkDraft, chunk_blocks
 from app.ingest.errors import IngestError
-from app.ingest.files import MIME, parse_file
+from app.ingest.files import MIME
+from app.ingest.parse_pool import parse_file_async
 from app.ingest.parsed import ParsedFile
 from app.ingest.storage import FileStore
 from app.models import Chunk, Document, DocumentEvent, DocumentFile, Source, StagingDocument
@@ -268,7 +268,7 @@ async def _prepare_from_source(
         for f in files:
             assert f.tmp is not None
             try:
-                kind, f.parsed = await asyncio.to_thread(parse_file, f.tmp, f.name, settings)
+                kind, f.parsed = await parse_file_async(f.tmp, f.name, settings)
             except IngestError as exc:
                 await _fail_staging(sm, source.id, src.external_id, [exc.message])
                 raise
@@ -317,7 +317,7 @@ async def _prepare_manual(
         path = store.path_for(row.sha256)
         if not path.exists():
             raise IngestError("store", f"Файл «{row.name}» пропал с диска")
-        kind, parsed = await asyncio.to_thread(parse_file, path, row.name, settings)
+        kind, parsed = await parse_file_async(path, row.name, settings)
         files.append(
             PreparedFile(
                 name=row.name,
