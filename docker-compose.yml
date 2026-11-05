@@ -10,6 +10,10 @@ x-backend: &backend
   environment:
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     OLLAMA_URL: http://ollama:11434
+    # Python (glibc) по умолчанию заводит до 8×ядер «арен» памяти и почти не отдаёт их
+    # системе: после разбора больших сканов worker остаётся «толстым». 2 арены — заметно
+    # меньше расход и рост памяти при той же скорости (docs/performance.md).
+    MALLOC_ARENA_MAX: "2"
   volumes:
     - documents:/data/documents
     # Сертификаты: CA внешнего сервиса проверки пароля (EXTERNAL_AUTH_CA_FILE)

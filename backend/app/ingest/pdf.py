@@ -97,7 +97,13 @@ def parse_pdf(path: Path, settings: Settings) -> ParsedFile:
         with pdfplumber.open(path) as pdf:
             result.pages = len(pdf.pages)
             for page_no, page in enumerate(pdf.pages, start=1):
-                _parse_page(page, page_no, settings, result)
+                try:
+                    _parse_page(page, page_no, settings, result)
+                finally:
+                    # pdfplumber держит в памяти все символы, линии и картинки каждой
+                    # прочитанной страницы до закрытия файла. У PDF на 300 страниц это
+                    # сотни мегабайт; close() отпускает страницу сразу после разбора.
+                    page.close()
     except ParseError:
         raise
     except (PDFSyntaxError, ValueError, KeyError, TypeError, OSError) as exc:

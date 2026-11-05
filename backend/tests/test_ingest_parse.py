@@ -1,5 +1,7 @@
 """Разбор файлов и нарезка на фрагменты — без БД."""
 
+import asyncio
+import pickle
 import shutil
 from pathlib import Path
 
@@ -9,9 +11,10 @@ from app.config import Settings
 from app.ingest.assemble import assemble_header, document_caption, header_meta
 from app.ingest.blocks import Block
 from app.ingest.chunker import chunk_blocks
-from app.ingest.errors import ParseError
+from app.ingest.errors import IngestError, ParseError
 from app.ingest.files import detect_type, parse_file
 from app.ingest.ocr import parse_tsv
+from app.ingest.parse_pool import parse_file_async, shutdown_pool
 from app.ingest.text_blocks import heading_level, merge_continuations, point_of
 from app.sources.base import TablePart
 from fakes.fake_source import FILES_DIR
@@ -157,6 +160,36 @@ def test_broken_files_give_clear_errors(tmp_path: Path) -> None:
     disguised = tmp_path / "prikaz.pdf"
     disguised.write_bytes((FILES_DIR / "iot_044.docx").read_bytes())
     assert detect_type(disguised) == "docx"
+
+
+def test_ingest_errors_survive_pickle() -> None:
+    """Ошибка из процесса разбора приходит в worker через pickle — с тем же этапом."""
+    err = pickle.loads(pickle.dumps(ParseError("скан пустой", stage="ocr")))  # noqa: S301
+    assert type(err) is ParseError and err.stage == "ocr" and err.message == "скан пустой"
+    err2 = pickle.loads(pickle.dumps(IngestError("store", "нет файла")))  # noqa: S301
+    assert type(err2) is IngestError and err2.stage == "store" and str(err2) == "нет файла"
+
+
+def test_parse_in_separate_process(tmp_path: Path) -> None:
+    """parse_processes > 0: файл разбирается в дочернем процессе, ошибки доходят как есть."""
+    settings = Settings(parse_processes=1, parse_tasks_per_process=1)
+
+    async def run() -> None:
+        kind, parsed = await parse_file_async(
+            FILES_DIR / "prikaz_112.pdf", "prikaz_112.pdf", settings
+        )
+        assert kind == "pdf" and parsed.pages == 2
+        assert any(b.kind == "table" for b in parsed.blocks)
+        # Второй файл — уже в новом процессе (parse_tasks_per_process=1).
+        bad = tmp_path / "bad.pdf"
+        bad.write_bytes(b"%PDF-1.4\n garbage garbage")
+        with pytest.raises(ParseError, match="PDF"):
+            await parse_file_async(bad, "bad.pdf", settings)
+
+    try:
+        asyncio.run(run())
+    finally:
+        shutdown_pool()
 
 
 # ---------------------------------------------------------------------------

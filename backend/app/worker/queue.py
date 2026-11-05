@@ -7,6 +7,7 @@
 """
 
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
@@ -71,25 +72,44 @@ async def enqueue(
     return job_id if inserted else None
 
 
-_DEQUEUE_SQL = text(
-    """
+_DEQUEUE_TEMPLATE = """
     UPDATE jobs SET status = 'running', locked_at = now(), locked_by = :worker,
                     attempts = attempts + 1
     WHERE id = (
         SELECT id FROM jobs
-        WHERE status = 'queued' AND run_after <= now()
+        WHERE status = 'queued' AND run_after <= now() {kind_filter}
         ORDER BY priority DESC, id
         FOR UPDATE SKIP LOCKED
         LIMIT 1
     )
     RETURNING id, kind, payload, attempts, max_attempts
     """
-)
+
+_DEQUEUE_SQL = text(_DEQUEUE_TEMPLATE.format(kind_filter=""))
+_DEQUEUE_ONLY_SQL = text(_DEQUEUE_TEMPLATE.format(kind_filter="AND kind = ANY(:kinds)"))
+_DEQUEUE_EXCEPT_SQL = text(_DEQUEUE_TEMPLATE.format(kind_filter="AND kind <> ALL(:kinds)"))
 
 
-async def dequeue(session: AsyncSession, worker_id: str) -> ClaimedJob | None:
-    """Атомарно забирает самую приоритетную готовую задачу. Коммит делает вызывающий."""
-    row = (await session.execute(_DEQUEUE_SQL, {"worker": worker_id})).mappings().first()
+async def dequeue(
+    session: AsyncSession,
+    worker_id: str,
+    *,
+    only: Collection[str] | None = None,
+    exclude: Collection[str] | None = None,
+) -> ClaimedJob | None:
+    """Атомарно забирает самую приоритетную готовую задачу. Коммит делает вызывающий.
+
+    `only` — брать только задачи этих видов, `exclude` — любые, кроме этих
+    (полосы worker'а: «видеокарта» и «всё остальное»).
+    """
+    params: dict[str, Any] = {"worker": worker_id}
+    if only is not None:
+        sql, params["kinds"] = _DEQUEUE_ONLY_SQL, list(only)
+    elif exclude is not None:
+        sql, params["kinds"] = _DEQUEUE_EXCEPT_SQL, list(exclude)
+    else:
+        sql = _DEQUEUE_SQL
+    row = (await session.execute(sql, params)).mappings().first()
     if row is None:
         return None
     return ClaimedJob(**row)

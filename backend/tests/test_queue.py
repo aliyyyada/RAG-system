@@ -88,3 +88,19 @@ async def test_worker_runs_job_and_records_unknown_kind_error(engine: AsyncEngin
     assert rows[bad] == "queued"  # будет повторена позже
     assert "no-such-kind" in err
     assert stats["done"] == 1
+
+
+async def test_dequeue_by_kind_lanes(engine: AsyncEngine) -> None:
+    """Полосы worker'а: «видеокарта» берёт только свои виды задач, вторая — все остальные."""
+    async with AsyncSession(engine) as s, s.begin():
+        parse = await queue.enqueue(s, "parse_document", {"doc": 1}, priority=0)
+        embed = await queue.enqueue(s, "chunk_embed", {"doc": 1}, priority=5)
+
+    gpu = frozenset({"chunk_embed"})
+    async with AsyncSession(engine) as s, s.begin():
+        job = await queue.dequeue(s, "w/cpu", exclude=gpu)
+        assert job and job.id == parse
+    async with AsyncSession(engine) as s, s.begin():
+        assert await queue.dequeue(s, "w/cpu", exclude=gpu) is None
+        job = await queue.dequeue(s, "w/gpu", only=gpu)
+        assert job and job.id == embed

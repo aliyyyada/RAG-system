@@ -95,11 +95,14 @@ async def handle_embed(
             async with sm() as s, s.begin():
                 # Пока шла векторизация, документ могли переразобрать: старых фрагментов
                 # уже нет, UPDATE их просто не найдёт.
-                for (chunk_id, _, _), vec in zip(rows, vectors, strict=True):
-                    await s.execute(
-                        text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
-                        {"v": to_pgvector(vec), "id": chunk_id},
-                    )
+                # Одна команда на всю пачку (executemany), а не 32 отдельных запроса.
+                await s.execute(
+                    text("UPDATE chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
+                    [
+                        {"v": to_pgvector(vec), "id": chunk_id}
+                        for (chunk_id, _, _), vec in zip(rows, vectors, strict=True)
+                    ],
+                )
 
 
 async def backfill_tick(session: AsyncSession, limit: int = 500) -> int:

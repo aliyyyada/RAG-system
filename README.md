@@ -92,6 +92,8 @@ E2E-тесты интерфейса (Playwright) — на запущенном �
 
 Пошагово, без опыта Docker: [docs/install-offline.md](docs/install-offline.md). Сборка пакета на Mac и перенос на флешке: [docs/build-on-mac.md](docs/build-on-mac.md).
 
+Видеокарта занята на 10–20 % или Docker «съел» всю память: [docs/performance.md](docs/performance.md) — причины и команды проверки.
+
 ## Документы
 
 - [Архитектура и ключевые решения](docs/architecture.md)

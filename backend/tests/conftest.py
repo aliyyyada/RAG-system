@@ -31,6 +31,9 @@ os.environ.setdefault("RERANKER", "none")
 os.environ.setdefault("CONTRA_MIN_SIMILARITY", "0.2")
 # Гостевой режим в тестах включён: проверяем, что даже с ним гость не получает документов.
 os.environ.setdefault("GUEST_MODE_ENABLED", "true")
+# Разбор файлов в тестах — в самом процессе pytest (быстрее); пул процессов проверяет
+# отдельный тест в test_ingest_parse.py.
+os.environ.setdefault("PARSE_PROCESSES", "0")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
