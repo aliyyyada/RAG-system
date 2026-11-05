@@ -4,7 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="$(mkdir -p "${1:-../../offline-bundle/reranker}" && cd "${1:-../../offline-bundle/reranker}" && pwd)"
-docker run --rm \
+# RERANKER_PLATFORM — платформа контейнера (build-bundle.sh передаёт платформу этой машины,
+# чтобы torch на Mac с Apple Silicon не работал через эмуляцию x86).
+docker run --rm --platform "${RERANKER_PLATFORM:-linux/$(docker version --format '{{.Server.Arch}}')}" \
   -v "$(pwd)/export_reranker.py:/work/export_reranker.py:ro" \
   -v "$OUT:/out" \
   python:3.12-slim-bookworm bash -c "

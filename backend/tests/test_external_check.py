@@ -68,10 +68,17 @@ async def test_fake_service_contract() -> None:
     assert (await provider.authenticate("nobody", FAKE_PASSWORD)).outcome is AuthOutcome.INVALID
 
 
-def test_missing_ca_file_does_not_break_provider(caplog: pytest.LogCaptureFixture) -> None:
+def test_missing_ca_file_does_not_break_provider(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Стенд без сертификатов: файла CA нет — провайдер создаётся, в журнале предупреждение."""
+    from app.auth.providers import external_check
     from app.auth.providers.external_check import ExternalCheckProvider
     from app.config import get_settings
+
+    # Миграции в тестах (alembic fileConfig) отключают уже созданные логгеры приложения:
+    # в полном прогоне предупреждение иначе не попадает в caplog.
+    monkeypatch.setattr(external_check.log, "disabled", False)
 
     settings = get_settings().model_copy(update={"external_auth_ca_file": "/nonexistent/ca.crt"})
     ExternalCheckProvider(settings)
