@@ -12,5 +12,10 @@ docker run --rm --platform "${RERANKER_PLATFORM:-linux/$(docker version --format
   python:3.12-slim-bookworm bash -c "
     pip install -q --index-url https://download.pytorch.org/whl/cpu torch==2.15.0 &&
     pip install -q transformers==5.22.1 onnx==1.23.2 onnxruntime==1.31.1 sentencepiece protobuf &&
-    python /work/export_reranker.py /out"
+    python /work/export_reranker.py /out" || {
+  code=$?
+  echo "ОШИБКА: подготовка реранкера завершилась с кодом $code." >&2
+  [[ $code -eq 137 ]] && echo "Код 137 — Docker не хватило памяти: Settings → Resources → Memory 12 ГБ и больше." >&2
+  exit "$code"
+}
 ls -lh "$OUT"

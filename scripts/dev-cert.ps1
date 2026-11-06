@@ -1,4 +1,4 @@
-# Самоподписанный сертификат для разработки на Windows (без openssl).
+﻿# Самоподписанный сертификат для разработки на Windows (без openssl).
 # Использование: .\scripts\dev-cert.ps1 [-HostName имя-сервера]
 param([string]$HostName = "localhost")
 $ErrorActionPreference = "Stop"
