@@ -224,6 +224,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\offline\install.ps1
 | Ошибка на реранкере (`pip install torch`) | Mac | запустить скрипт ещё раз: часто это обрыв скачивания |
 | Скрипт молча остановился после `Please consider to run pre-processing before quantization` | Mac | не хватило памяти Docker (код выхода 137): увеличить Memory до 12 ГБ+ (часть 1, шаг 4) и запустить скрипт снова |
 | `File too large` при копировании на флешку | Mac | флешка в FAT32, переформатировать в exFAT (6.1) |
+| `install.ps1`: «Отсутствует закрывающий знак ")"», в тексте «кракозябры» | Windows | скрипт сохранён без BOM (пакеты до 06.11.2026); пересохранить: `$p=(Resolve-Path .\scripts\offline\install.ps1).Path; [IO.File]::WriteAllText($p, [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8), (New-Object Text.UTF8Encoding $true))` |
 | «Файл … повреждён при переносе» | Windows | скопировать этот файл с флешки ещё раз; если не помогло, заново записать на флешку |
 | «Образ … собран под 'arm64'» | Windows | пакет собран старым скриптом без amd64, пересобрать на Mac с этой версией скрипта |
 | `exec format error` в `docker compose logs` | Windows | то же самое |
