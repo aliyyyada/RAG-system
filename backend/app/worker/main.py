@@ -144,7 +144,12 @@ async def main() -> None:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, stop.set)
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            # Windows (запуск без Docker для отладки): у цикла asyncio нет add_signal_handler.
+            # Обычный обработчик сигнала будит цикл потокобезопасно; Ctrl+C тоже сюда.
+            signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
 
     async with get_sessionmaker()() as session, session.begin():
         n = await queue.requeue_stale(session, settings.worker_stale_after_seconds)
