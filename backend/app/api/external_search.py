@@ -2,10 +2,9 @@
 
     POST /api/integration/v1/search
     X-API-Key: <ключ из .env, EXTERNAL_SEARCH_API_KEY>
-    {"id_userboss": "123456", "query": "работы на высоте наряд-допуск", "limit": 50}
+    {"id_userboss": "123456", "query": "работы на высоте наряд-допуск"}
 
-    200 → {"ids": ["7C1D…", "A9F0…"], "unavailable_sources": [], "reranked": false,
-           "fulltext_only": false}
+    200 → {"ids": ["7C1D…", "A9F0…"]}   (не больше EXTERNAL_SEARCH_LIMIT, по умолчанию 50)
 
 Что происходит внутри:
 1. Проверяем ключ. Ключ не задан в .env — API выключено (503).
@@ -72,21 +71,10 @@ class ExternalSearchRequest(BaseModel):
         description="ID_UserBoss пользователя: по нему источник отдаёт список доступных документов",
     )
     query: str = Field(min_length=1, max_length=1000, description="Текст запроса")
-    limit: int | None = Field(
-        default=None, ge=1, le=500, description="Сколько документов вернуть максимум"
-    )
 
 
 class ExternalSearchResponse(BaseModel):
     ids: list[str] = Field(description="ID_GUID документов, лучшие первыми")
-    unavailable_sources: list[str] = Field(
-        default_factory=list,
-        description="Источники, которые не ответили о правах: их документов в выдаче нет",
-    )
-    reranked: bool = Field(description="Порядок уточнён реранкером")
-    fulltext_only: bool = Field(
-        description="Векторный поиск недоступен (Ollama не ответила): искали только по словам"
-    )
 
 
 # ---------- Ключ доступа ----------
@@ -225,13 +213,12 @@ async def external_search(
 ) -> ExternalSearchResponse:
     settings = get_settings()
     user = body.id_userboss
-    limit = body.limit or settings.external_search_limit
+    limit = settings.external_search_limit
 
     # 1. Права: все включённые источники параллельно, каждый со своим таймаутом.
     sources = list(await session.scalars(select(Source).where(Source.enabled).order_by(Source.id)))
     answers = await asyncio.gather(*(_allowed_ids(s, user, settings) for s in sources))
     allowed = {s.id: ids for s, ids in zip(sources, answers, strict=True) if ids is not None}
-    unavailable = [s.name for s, ids in zip(sources, answers, strict=True) if ids is None]
     if not allowed:
         raise HTTPException(
             status_code=503,
@@ -242,8 +229,6 @@ async def external_search(
         )
 
     ids: list[str] = []
-    reranked = False
-    vector = None
     if any(allowed.values()):
         scope = _scope(allowed)
         # Кандидатов берём с запасом: у одного документа обычно несколько фрагментов.
@@ -276,7 +261,6 @@ async def external_search(
                 scores = await reranker.score(body.query, [chunk_text[c] for c in order])
                 pairs = sorted(zip(order, scores, strict=True), key=lambda p: -p[1])
                 order = [c for c, sc in pairs if sc >= settings.rerank_min_score]
-                reranked = True
             except Exception:  # noqa: BLE001 — реранкер не должен ронять поиск
                 log.exception("Ошибка реранкера, используем порядок RRF")
 
@@ -299,9 +283,4 @@ async def external_search(
     )
     await session.commit()
 
-    return ExternalSearchResponse(
-        ids=ids,
-        unavailable_sources=unavailable,
-        reranked=reranked,
-        fulltext_only=vector is None and any(allowed.values()),
-    )
+    return ExternalSearchResponse(ids=ids)
