@@ -11,6 +11,7 @@ from app.api import (
     chat,
     contradictions,
     documents,
+    external_search,
     graph,
     health,
     integration,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(manual_upload.router)
     app.include_router(documents.router)
     app.include_router(integration.router)
+    app.include_router(external_search.router)
     app.include_router(chat.router)
     app.include_router(graph.router)
     app.include_router(epoz_api.router)

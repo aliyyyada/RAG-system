@@ -208,6 +208,12 @@ class Settings(BaseSettings):
     # упал во время обработки), возвращается в очередь. Так индексация переживает перезапуск.
     worker_stale_after_seconds: int = 15 * 60
 
+    # ---------- API поиска для внешних систем (app/api/external_search.py) ----------
+    # Ключ, который внешняя система передаёт в заголовке X-API-Key. Пусто — API выключено.
+    external_search_api_key: SecretStr = SecretStr("")
+    # Сколько документов отдаём, если в запросе не указан limit.
+    external_search_limit: int = Field(default=50, ge=1, le=500)
+
     @model_validator(mode="after")
     def validate_prod(self) -> "Settings":
         if self.app_env == "prod" and self.enable_test_users:
